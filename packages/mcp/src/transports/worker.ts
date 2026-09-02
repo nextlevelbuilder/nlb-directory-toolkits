@@ -12,6 +12,18 @@ const serverInstance = new McpServer();
 type SseListener = (event: string, data: unknown) => void;
 const sseSessions = new Map<string, SseListener>();
 
+function generateSessionId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  // Compatible UUIDv4 fallback for runtimes where crypto is not on globalThis
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 /**
  * Cloudflare Workers standard fetch handler.
  * Handles:
@@ -63,7 +75,7 @@ export async function handleWorkerFetch(request: Request, env?: WorkerEnv): Prom
 
   // SSE Transport initialization
   if (url.pathname === "/sse" && request.method === "GET") {
-    const sessionId = crypto.randomUUID();
+    const sessionId = generateSessionId();
     const messageEndpoint = `/message?sessionId=${sessionId}`;
 
     let streamListener: SseListener;
