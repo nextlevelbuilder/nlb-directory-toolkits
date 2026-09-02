@@ -1,0 +1,18 @@
+{
+  "name": "nlb-directory-toolkits-root",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter \"./packages/*\" run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "pnpm --filter \"./packages/*\" run type-check",
+    "clean": "pnpm --filter \"./packages/*\" run clean"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.10",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

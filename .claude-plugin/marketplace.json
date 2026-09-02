@@ -1,0 +1,14 @@
+{
+  "name": "nextlevelbuilder-marketplace",
+  "owner": {
+    "name": "Next Level Builders",
+    "email": "contact@nextlevelbuilder.io"
+  },
+  "plugins": [
+    {
+      "name": "nlb-directory",
+      "source": "./",
+      "description": "Next Level Builders Directory tools for validating, previewing, and submitting products"
+    }
+  ]
+}

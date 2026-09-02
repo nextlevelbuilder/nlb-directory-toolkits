@@ -1,0 +1,18 @@
+{
+  "name": "nlb-directory",
+  "version": "0.1.0",
+  "description": "Next Level Builders Directory toolkits for listing products, validating contracts, and managing submissions",
+  "author": {
+    "name": "Next Level Builders",
+    "url": "https://nextlevelbuilder.io"
+  },
+  "homepage": "https://nextlevelbuilder.io",
+  "repository": "https://github.com/nextlevelbuilder/nlb-directory-toolkits",
+  "license": "MIT",
+  "mcpServers": {
+    "nlb-mcp": {
+      "command": "npx",
+      "args": ["-y", "@nextlevelbuilder/mcp"]
+    }
+  }
+}

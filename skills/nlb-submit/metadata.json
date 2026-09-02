@@ -1,0 +1,11 @@
+{
+  "name": "nlb-submit",
+  "displayName": "Next Level Builders Directory Submit",
+  "version": "0.1.0",
+  "description": "Scan, format, validate, and submit products to Next Level Builders Directory",
+  "author": "Next Level Builders",
+  "homepage": "https://nextlevelbuilder.io",
+  "repository": "https://github.com/nextlevelbuilder/nlb-directory-toolkits",
+  "license": "MIT",
+  "keywords": ["directory", "showcase", "nextlevelbuilder", "mcp", "cli", "agent-skill"]
+}

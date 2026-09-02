@@ -1,0 +1,36 @@
+{
+  "name": "@nextlevelbuilder/cli",
+  "version": "0.1.0",
+  "description": "Command-line interface for Next Level Builders Directory - validate, preview, submit, list, and inspect products",
+  "type": "module",
+  "bin": {
+    "nlb": "./bin/nlb.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node -e \"try { fs.chmodSync('bin/nlb.js', 0o755); } catch {}\"",
+    "type-check": "tsc --noEmit",
+    "clean": "node -e \"try { fs.rmSync('dist', { recursive: true, force: true }); } catch {}\""
+  },
+  "dependencies": {
+    "@nextlevelbuilder/contracts": "workspace:*",
+    "commander": "^13.1.0",
+    "picocolors": "^1.1.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.10",
+    "typescript": "^5.7.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "name": "@nextlevelbuilder/mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol (MCP) server for Next Level Builders Directory — stdio and Cloudflare Workers transports",
+  "type": "module",
+  "bin": {
+    "nlb-mcp": "./bin/mcp-server.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./worker": {
+      "types": "./dist/transports/worker.d.ts",
+      "import": "./dist/transports/worker.js",
+      "default": "./dist/transports/worker.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node -e \"try { fs.chmodSync('bin/mcp-server.js', 0o755); } catch {}\"",
+    "type-check": "tsc --noEmit",
+    "clean": "node -e \"try { fs.rmSync('dist', { recursive: true, force: true }); } catch {}\""
+  },
+  "dependencies": {
+    "@nextlevelbuilder/contracts": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.10",
+    "typescript": "^5.7.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
