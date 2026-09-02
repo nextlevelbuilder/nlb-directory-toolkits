@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { ProductDocumentSchema, computeContentHash } from "@nextlevelbuilder/contracts";
+import { AuthorProductDocumentSchema, sanitizeAuthorDocument, computeContentHash } from "@nextlevelbuilder/contracts";
 import { resolveConfig } from "../config.js";
 import { NlbApiClient } from "../api/client.js";
 import pc from "picocolors";
@@ -41,7 +41,8 @@ export async function submitCommand(filePath: string, options: SubmitOptions = {
     return;
   }
 
-  const parseResult = ProductDocumentSchema.safeParse(docData);
+  // Strictly parse with AuthorProductDocumentSchema to reject client-assigned trustScore or featured signals
+  const parseResult = AuthorProductDocumentSchema.safeParse(docData);
   if (!parseResult.success) {
     const errors = parseResult.error.errors.map((e) => ({
       path: e.path.join("."),
@@ -57,7 +58,8 @@ export async function submitCommand(filePath: string, options: SubmitOptions = {
     return;
   }
 
-  const doc = parseResult.data;
+  // Sanitize document to guarantee unprivileged initial trust state
+  const doc = sanitizeAuthorDocument(parseResult.data);
   const contentHash = await computeContentHash(doc);
   const config = resolveConfig(options);
 

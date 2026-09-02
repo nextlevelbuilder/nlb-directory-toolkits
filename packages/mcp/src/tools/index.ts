@@ -1,12 +1,13 @@
 import {
   ProductDocumentSchema,
+  AuthorProductDocumentSchema,
+  sanitizeAuthorDocument,
   computeContentHash,
   listTemplates,
   getTemplate,
   ProductCreateResponseSchema,
   ProductRevisionResponseSchema,
-  ProductSubmitResponseSchema,
-  type ProductDocument
+  ProductSubmitResponseSchema
 } from "@nextlevelbuilder/contracts";
 
 export interface McpToolDefinition {
@@ -136,29 +137,27 @@ export const TOOLS: McpToolDefinition[] = [
       required: ["document"]
     },
     handler: async (args, context) => {
+      // Authenticate mutation access first:
+      if (context && context.workerAuth === false && (!args.api_key || typeof args.api_key !== "string")) {
+        throw new Error("Unauthorized: Worker authentication token or explicit api_key parameter is required to submit products.");
+      }
+
       if (!args.document || typeof args.document !== "object") {
         throw new Error("Missing required 'document' parameter.");
       }
 
-      const parseResult = ProductDocumentSchema.safeParse(args.document);
+      // Strictly parse with AuthorProductDocumentSchema to reject client-assigned trust signals
+      const parseResult = AuthorProductDocumentSchema.safeParse(args.document);
       if (!parseResult.success) {
         throw new Error(
           `Document schema invalid: ${parseResult.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ")}`
         );
       }
 
-      const doc = parseResult.data as ProductDocument;
+      // Sanitize document to guarantee unprivileged initial trust state
+      const doc = sanitizeAuthorDocument(parseResult.data);
       const contentHash = await computeContentHash(doc);
       const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
-
-      // Authenticate mutation access:
-      // 1. Caller provides explicit api_key in arguments -> allowed.
-      // 2. Or caller runs in worker/server context where workerAuth is true -> can use server NLB_API_KEY.
-      // 3. Or local stdio execution where context is undefined -> can use local NLB_API_KEY.
-      // 4. If worker context is explicitly unauthenticated (workerAuth === false) and no caller api_key -> reject.
-      if (context && context.workerAuth === false && (!args.api_key || typeof args.api_key !== "string")) {
-        throw new Error("Unauthorized: Worker authentication token or explicit api_key parameter is required to submit products.");
-      }
 
       const apiKey = typeof args.api_key === "string" && args.api_key.trim() ? args.api_key.trim() : process.env.NLB_API_KEY;
 
