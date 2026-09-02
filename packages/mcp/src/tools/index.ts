@@ -82,7 +82,7 @@ export const TOOLS: McpToolDefinition[] = [
         throw new Error("Missing required 'document' parameter.");
       }
 
-      const parseResult = ProductDocumentSchema.safeParse(args.document);
+      const parseResult = AuthorProductDocumentSchema.safeParse(args.document);
 
       if (!parseResult.success) {
         return {
@@ -95,16 +95,17 @@ export const TOOLS: McpToolDefinition[] = [
         };
       }
 
-      const contentHash = await computeContentHash(parseResult.data);
+      const sanitized = sanitizeAuthorDocument(parseResult.data);
+      const contentHash = await computeContentHash(sanitized);
       return {
         valid: true,
         contentHash,
         hashVersion: "v1",
         product: {
-          name: parseResult.data.name,
-          slug: parseResult.data.slug,
-          category: parseResult.data.category,
-          blocksCount: parseResult.data.blocks.length
+          name: sanitized.name,
+          slug: sanitized.slug,
+          category: sanitized.category,
+          blocksCount: sanitized.blocks.length
         }
       };
     }

@@ -1,4 +1,4 @@
-import { webcrypto, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 
 export const HASH_VERSION = "v1" as const;
 
@@ -70,24 +70,24 @@ export function canonicalizeJson(value: unknown, stack = new Set<object>()): str
 
 /**
  * Asynchronously computes deterministic SHA-256 canonical hash formatted as lowercase hex string.
- * Compatible with Node.js 18+, Cloudflare Workers, and modern browser runtimes.
+ * Uses standard Web Crypto (crypto.subtle) when available with node:crypto fallback.
  */
 export async function computeContentHash(data: unknown): Promise<string> {
   const canonical = canonicalizeJson(data);
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(canonical);
 
-  const subtle = globalThis.crypto?.subtle ?? (webcrypto?.subtle as SubtleCrypto);
-  if (!subtle) {
-    return createHash("sha256").update(canonical).digest("hex");
+  if (typeof globalThis.crypto?.subtle !== "undefined") {
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(canonical);
+    const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   }
-  const hashBuffer = await subtle.digest("SHA-256", bytes);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 /**
- * Synchronous computation of SHA-256 canonical hash using Node.js crypto.
+ * Synchronous computation of SHA-256 canonical hash.
  */
 export function computeContentHashSync(data: unknown): string {
   const canonical = canonicalizeJson(data);

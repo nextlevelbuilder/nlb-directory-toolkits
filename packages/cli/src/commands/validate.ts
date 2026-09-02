@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { ProductDocumentSchema, computeContentHash } from "@nextlevelbuilder/contracts";
+import { AuthorProductDocumentSchema, sanitizeAuthorDocument, computeContentHash } from "@nextlevelbuilder/contracts";
 import pc from "picocolors";
 
 export interface ValidateOptions {
@@ -49,7 +49,7 @@ export async function validateCommand(filePath: string, options: ValidateOptions
     return { valid: false, errors: [{ message: errorMsg }] };
   }
 
-  const result = ProductDocumentSchema.safeParse(parsedJson);
+  const result = AuthorProductDocumentSchema.safeParse(parsedJson);
 
   if (!result.success) {
     const errors = result.error.errors.map((e) => ({
@@ -70,7 +70,8 @@ export async function validateCommand(filePath: string, options: ValidateOptions
     return { valid: false, errors };
   }
 
-  const contentHash = await computeContentHash(result.data);
+  const sanitized = sanitizeAuthorDocument(result.data);
+  const contentHash = await computeContentHash(sanitized);
 
   if (options.json) {
     console.log(
@@ -80,9 +81,9 @@ export async function validateCommand(filePath: string, options: ValidateOptions
           contentHash,
           hashVersion: "v1",
           product: {
-            name: result.data.name,
-            slug: result.data.slug,
-            blocksCount: result.data.blocks.length
+            name: sanitized.name,
+            slug: sanitized.slug,
+            blocksCount: sanitized.blocks.length
           }
         },
         null,
@@ -90,7 +91,7 @@ export async function validateCommand(filePath: string, options: ValidateOptions
       )
     );
   } else {
-    console.log(pc.green(`✔ Schema valid! ${pc.bold(result.data.name)} (${result.data.blocks.length} blocks)`));
+    console.log(pc.green(`✔ Schema valid! ${pc.bold(sanitized.name)} (${sanitized.blocks.length} blocks)`));
     console.log(pc.cyan(`  Canonical SHA-256 Hash: ${pc.bold(contentHash)}`));
   }
 
