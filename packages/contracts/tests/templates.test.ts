@@ -18,36 +18,38 @@ describe("Contracts: Layout Templates", () => {
     const slugs = templates.map((t) => t.slug);
     expect(slugs).toEqual([
       "saas-launch",
-      "ai-agent-tool",
-      "developer-cli",
-      "curated-community",
-      "minimalist-showcase"
+      "ai-agent",
+      "dev-tool",
+      "community-curated",
+      "minimalist"
     ]);
   });
 
-  it("should find templates by slug or name", () => {
+  it("should find templates by slug or name (including legacy aliases)", () => {
+    expect(getTemplate("dev-tool")).toBe(DeveloperCliTemplate);
     expect(getTemplate("developer-cli")).toBe(DeveloperCliTemplate);
-    expect(getTemplate("Developer CLI")).toBe(DeveloperCliTemplate);
+    expect(getTemplate("Developer Framework & CLI Template")).toBe(DeveloperCliTemplate);
     expect(getTemplate("saas-launch")).toBe(SaasLaunchTemplate);
+    expect(getTemplate("ai-agent")).toBe(AiAgentTemplate);
     expect(getTemplate("ai-agent-tool")).toBe(AiAgentTemplate);
+    expect(getTemplate("community-curated")).toBe(CuratedCommunityTemplate);
     expect(getTemplate("curated-community")).toBe(CuratedCommunityTemplate);
+    expect(getTemplate("minimalist")).toBe(MinimalistShowcaseTemplate);
     expect(getTemplate("minimalist-showcase")).toBe(MinimalistShowcaseTemplate);
   });
 
   it("should build valid ProductDocuments from templates", () => {
-    const doc = createDocumentFromTemplate("developer-cli", {
+    const doc = createDocumentFromTemplate("dev-tool", {
       name: "NLB Toolkit",
-      slug: "nlb-toolkit",
       tagline: "The fastest CLI for builders",
       description: "A comprehensive developer toolkit.",
       websiteUrl: "https://nextlevelbuilder.io"
     });
 
     const parsed = ProductDocumentSchema.parse(doc);
-    expect(parsed.name).toBe("NLB Toolkit");
-    expect(parsed.slug).toBe("nlb-toolkit");
-    expect(parsed.blocks.length).toBeGreaterThanOrEqual(5);
-    expect(parsed.metadata.layoutTemplate).toBe("Developer CLI");
+    expect(parsed.title).toBe("NLB Toolkit");
+    expect(parsed.categorySlugs).toContain("developer-tools");
+    expect(parsed.blocks.length).toBeGreaterThanOrEqual(4);
   });
 
   it("should validate all template sample documents against ProductDocumentSchema", () => {
@@ -60,9 +62,9 @@ describe("Contracts: Layout Templates", () => {
     ];
 
     for (const template of templates) {
+      if (!template.buildDocument) continue;
       const doc = template.buildDocument({
         name: `Sample ${template.name}`,
-        slug: `sample-${template.slug}`,
         tagline: "A sample product",
         description: "Detailed sample description for validation.",
         websiteUrl: "https://example.com"

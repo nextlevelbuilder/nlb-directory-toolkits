@@ -13,9 +13,9 @@
 ```text
 nlb-directory-toolkits/
 ├── packages/
-│   ├── contracts/       # @nextlevelbuilder/contracts: Zod schemas, 16 block types, 5 templates, SHA-256 hasher
-│   ├── cli/             # @nextlevelbuilder/cli: `nlb` binary (validate, preview, submit, list, get, status)
-│   └── mcp/             # @nextlevelbuilder/mcp: Model Context Protocol server (stdio & Cloudflare Workers)
+│   ├── contracts/       # @nextlevelbuilder/contracts: Zod schemas, 16 block types, 5 templates, SHA-256 hasher, wire APIs
+│   ├── cli/             # @nextlevelbuilder/cli: `nlb` binary (validate, preview, submit, list, get, rankings, stats, doctor, vote, keys, upload, checkout)
+│   └── mcp/             # @nextlevelbuilder/mcp: Model Context Protocol server (stdio & Cloudflare Workers, 15 tools)
 ├── skills/
 │   └── nlb-submit/      # SKILL.md: Standard AgentSkill for Claude Code, Cursor, Codex, OpenCode, skills.sh
 └── docs/                # Detailed guides for CLI, MCP, Contracts, and Architecture
@@ -23,18 +23,16 @@ nlb-directory-toolkits/
 
 | Package | Description | Status |
 |---|---|---|
-| **`@nextlevelbuilder/contracts`** | Zod schemas for 16 block types, 5 layout templates, deterministic canonical SHA-256 hasher, and API contracts. | [![npm](https://img.shields.io/badge/contracts-v0.1.0-blue)](packages/contracts) |
-| **`@nextlevelbuilder/cli`** | Developer & agent CLI binary `nlb` with validate, terminal box preview, submit, list, get, and status. | [![npm](https://img.shields.io/badge/cli-v0.1.0-green)](packages/cli) |
-| **`@nextlevelbuilder/mcp`** | JSON-RPC 2.0 MCP server with stdio transport for local IDEs and fetch/SSE handler for Cloudflare Workers. | [![npm](https://img.shields.io/badge/mcp-v0.1.0-purple)](packages/mcp) |
-| **`skills/nlb-submit`** | Cross-marketplace AgentSkill for autonomous repository scanning, formatting, and directory submission. | [![skill](https://img.shields.io/badge/skill-nlb--submit-orange)](skills/nlb-submit/SKILL.md) |
+| **`@nextlevelbuilder/contracts`** | Canonical server-synchronized schemas for 16 block types, 5 layout templates, deterministic canonical SHA-256 hasher, and API wire contracts. | [![npm](https://img.shields.io/badge/contracts-v0.2.0-blue)](packages/contracts) |
+| **`@nextlevelbuilder/cli`** | Developer & agent CLI binary `nlb` with validation, terminal preview, submissions with Polar payments, rankings, stats, doctor, voting, and uploads. | [![npm](https://img.shields.io/badge/cli-v0.2.0-green)](packages/cli) |
+| **`@nextlevelbuilder/mcp`** | Model Context Protocol server exposing 15 tools for local AI IDEs and Cloudflare Workers edge runtime. | [![npm](https://img.shields.io/badge/mcp-v0.2.0-purple)](packages/mcp) |
+| **`skills/nlb-submit`** | Cross-marketplace AgentSkill for autonomous repository scanning, block formatting, and directory submission. | [![skill](https://img.shields.io/badge/skill-nlb--submit-orange)](skills/nlb-submit/SKILL.md) |
 
 ---
 
 ## ⚡ Quickstart
 
 ### 1. Using the CLI (`nlb`)
-
-Validate and preview a product listing JSON without installing:
 
 ```bash
 # Validate schema and compute SHA-256 canonical hash:
@@ -44,13 +42,22 @@ npx @nextlevelbuilder/cli validate product.json
 npx @nextlevelbuilder/cli preview product.json
 
 # Generate a starter template:
-npx @nextlevelbuilder/cli template developer-cli --out product.json
+npx @nextlevelbuilder/cli template dev-tool --out product.json
 
-# Submit revision to directory:
-npx @nextlevelbuilder/cli submit product.json --api-key <YOUR_API_KEY>
+# Submit revision to directory review queue (supports Polar checkout if slot needed):
+npx @nextlevelbuilder/cli submit product.json --org <YOUR_ORG_UUID> --api-key <YOUR_API_KEY>
 
-# Check moderation status:
-npx @nextlevelbuilder/cli status my-awesome-tool
+# View organic community rankings / leaderboard:
+npx @nextlevelbuilder/cli rankings weekly
+
+# Check live platform metrics and statistics:
+npx @nextlevelbuilder/cli stats
+
+# Export raw LLM-optimized Markdown for any product:
+npx @nextlevelbuilder/cli get my-awesome-tool --markdown
+
+# Check database and endpoint connectivity:
+npx @nextlevelbuilder/cli doctor
 ```
 
 ### 2. Setting up the MCP Server
@@ -75,58 +82,35 @@ npx @nextlevelbuilder/cli status my-awesome-tool
       "command": "npx",
       "args": ["-y", "@nextlevelbuilder/mcp"],
       "env": {
-        "NLB_API_KEY": "your_api_key_here"
+        "NLB_API_KEY": "nlb_live_your_key_here"
       }
     }
   }
 }
 ```
 
-#### For Codex / OpenCode
-```bash
-npx -y @nextlevelbuilder/mcp
-```
-
-### 3. Using the AgentSkill (`skills/nlb-submit`)
-
-To allow Claude Code or Cursor to autonomously submit your project, invoke:
-```bash
-/nlb-submit
-```
-The agent will inspect your repository, pick the optimal layout template, create `product.json`, validate it, render a preview, and submit it to `https://nextlevelbuilder.io`.
-
 ---
 
 ## 🧩 16 Supported Block Types
 
-Every listing in Next Level Builders is composed of modular, strongly-typed blocks:
+Every listing in Next Level Builders is composed of modular, strongly-typed blocks with `id` and `props`:
 
-1. **`hero`**: Main showcase with headline, badges, CTAs, alignment, and themes.
-2. **`carousel`**: Multi-slide image and feature rotation with autoplay.
+1. **`hero`**: Main showcase with headline, subheadline, CTA, and badge.
+2. **`carousel`**: Multi-slide image rotation with titles and image URLs.
 3. **`mediaGallery`**: Responsive multi-column screenshot and video gallery.
-4. **`quote`**: Testimonials, verified reviews, and ratings.
-5. **`grid`**: Multi-column feature highlights and capability cards.
-6. **`changelog`**: Version histories, release dates, and categorized changes.
+4. **`quote`**: Testimonials, verified reviews, and author credentials.
+5. **`grid`**: Multi-column feature highlights and capability cards (1-3 cols).
+6. **`changelog`**: Version histories, release dates, and categorized change notes.
 7. **`roadmap`**: Planned, in-progress, and completed development milestones.
 8. **`pricing`**: Tiers with billing periods, feature lists, and popular badges.
-9. **`faq`**: Accordion Q&A list.
+9. **`faq`**: Accordion Q&A items.
 10. **`techStack`**: Categorized technology and runtime badges.
-11. **`liveDemo`**: Embedded interactive sandbox (`iframe`, `stackblitz`, `codesandbox`).
+11. **`liveDemo`**: Embedded interactive sandbox (`iframe`, `height`, `sandboxTokens`).
 12. **`cta`**: High-conversion call-to-action banner.
 13. **`founder`**: Founder profiles, bios, and verified social links.
-14. **`verification`**: Domain, DNS, or GitHub provenance proofs.
+14. **`verification`**: Metric and platform provenance proofs.
 15. **`milestones`**: Key historical achievements with metrics.
 16. **`caseStudy`**: In-depth customer story with problem, solution, and quantifiable results.
-
----
-
-## 🔒 Cryptographic Content Hashing
-
-Next Level Builders enforces immutable revision integrity via **deterministic canonical SHA-256 hashing**:
-- Object keys are recursively sorted in lexicographical order.
-- Negative zero (`-0`) is normalized to `0`.
-- Non-finite numbers (`NaN`, `Infinity`) and circular references are rejected.
-- Uses standard Web Crypto (`crypto.subtle`) ensuring cross-runtime determinism between Node.js 18-22, Cloudflare Workers, and browser environments.
 
 ---
 

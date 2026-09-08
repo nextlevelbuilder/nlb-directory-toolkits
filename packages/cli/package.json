@@ -1,6 +1,6 @@
 {
   "name": "@nextlevelbuilder/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Command-line interface for Next Level Builders Directory - validate, preview, submit, list, and inspect products",
   "type": "module",
   "bin": {

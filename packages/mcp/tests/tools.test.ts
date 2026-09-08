@@ -55,11 +55,39 @@ describe("MCP: Tools Execution & Security", () => {
       { workerAuth: false } // Unauthenticated worker caller without explicit api_key
     );
 
-    expect(res?.result).toBeDefined();
-    const result = res?.result as { isError: boolean; content: Array<{ text: string }> };
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("Unauthorized");
+    expect(res?.error).toBeDefined();
+    expect(res?.error?.code).toBe(-32001);
+    expect(res?.error?.message).toContain("Unauthorized");
   });
+  it("should reject all mutating tools when workerAuth is not true", async () => {
+    const mutatingTools = [
+      "submit_product",
+      "cast_vote",
+      "upload_media",
+      "create_checkout",
+      "create_api_key",
+      "revoke_api_key"
+    ];
+
+    for (const toolName of mutatingTools) {
+      const res = await server.handleMessage(
+        {
+          jsonrpc: "2.0",
+          id: 100,
+          method: "tools/call",
+          params: {
+            name: toolName,
+            arguments: {}
+          }
+        },
+        { workerAuth: false }
+      );
+      expect(res?.error).toBeDefined();
+      expect(res?.error?.code).toBe(-32001);
+      expect(res?.error?.message).toContain("Unauthorized");
+    }
+  });
+
 
   it("should reject arbitrary unauthorized API endpoints to prevent SSRF", () => {
     expect(() => validateAllowedApiUrl("https://evil-attacker.com")).toThrow(/Access to 'evil-attacker.com' is disallowed/);
@@ -102,7 +130,7 @@ describe("MCP: Tools Execution & Security", () => {
 
     const result = res?.result as { content: Array<{ text: string }> };
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.template.slug).toBe("developer-cli");
-    expect(parsed.template.sampleBlocks).toBeDefined();
+    expect(parsed.template.slug).toBe("dev-tool");
+    expect(parsed.template.name).toContain("Developer");
   });
 });

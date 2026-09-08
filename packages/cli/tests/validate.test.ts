@@ -25,8 +25,26 @@ describe("CLI: Validate Command", () => {
       blocks: []
     };
     writeFileSync(invalidPath, JSON.stringify(invalidDoc), "utf-8");
-  });
 
+    const invalidBlockPath = join(tmpdir(), "invalid-block-product.json");
+    const invalidBlockDoc = {
+      title: "Valid Title",
+      tagline: "Valid Tagline",
+      description: "Valid description exceeding ten characters.",
+      websiteUrl: "https://example.com",
+      category: "tools",
+      blocks: [
+        {
+          id: "hero-1",
+          type: "hero",
+          props: {
+            headline: "" // Invalid: headline must be min 1 char
+          }
+        }
+      ]
+    };
+    writeFileSync(invalidBlockPath, JSON.stringify(invalidBlockDoc), "utf-8");
+  });
   afterAll(() => {
     if (existsSync(validPath)) unlinkSync(validPath);
     if (existsSync(invalidPath)) unlinkSync(invalidPath);
@@ -49,5 +67,14 @@ describe("CLI: Validate Command", () => {
   it("should return false when file does not exist", async () => {
     const result = await validateCommand("/non/existent/file.json", { json: true });
     expect(result.valid).toBe(false);
+  });
+
+  it("should emit valid JSON and not crash when block schema fails (D1 regression)", async () => {
+    const invalidBlockPath = join(tmpdir(), "invalid-block-product.json");
+    const result = await validateCommand(invalidBlockPath, { json: true });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toBeDefined();
+    expect(result.errors!.length).toBeGreaterThan(0);
+    if (existsSync(invalidBlockPath)) unlinkSync(invalidBlockPath);
   });
 });

@@ -31,7 +31,7 @@ export async function templateCommand(templateName?: string, options: TemplateOp
     templates.forEach((t) => {
       console.log(`  • ${pc.bold(pc.white(t.name))} ${pc.dim(`(${t.slug})`)}`);
       console.log(`    ${pc.gray(t.description)}`);
-      console.log(`    Category: ${pc.yellow(t.recommendedCategory)} | Blocks: ${t.blockTypes.join(", ")}\n`);
+      console.log(`    Category: ${pc.yellow(t.recommendedCategory || "General")} | Blocks: ${(t.blockTypes || []).join(", ")}\n`);
     });
     console.log(pc.dim(`Generate starter file: npx @nextlevelbuilder/cli template <slug> --out product.json\n`));
     return;
@@ -48,12 +48,10 @@ export async function templateCommand(templateName?: string, options: TemplateOp
   }
 
   const doc = createDocumentFromTemplate(template.slug, {
-    name: "My Awesome Product",
-    slug: "my-awesome-product",
+    title: "My Awesome Product",
     tagline: "Describe your product in one compelling sentence.",
     description: "Full markdown description explaining what your product does, why it matters, and how builders benefit.",
-    websiteUrl: "https://myproduct.example.com",
-    repoUrl: "https://github.com/myusername/my-awesome-product"
+    websiteUrl: "https://myproduct.example.com"
   });
 
   const formattedJson = JSON.stringify(doc, null, 2);

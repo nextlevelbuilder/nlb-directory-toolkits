@@ -1,138 +1,262 @@
 import { z } from "zod";
-import { ProductDocumentSchema, ProductSummarySchema, ProductRevisionSchema, Sha256HexHashSchema } from "./document.js";
-import { SafeHttpUrlSchema } from "./blocks/types.js";
+import { ProductDocumentSchema, ProductSummarySchema, ProductRevisionSchema } from "./document.js";
+import { SafeHttpUrlSchema } from "./blocks.js";
 
-// POST /api/v1/products
+// 1. POST /api/v1/products - Create Product Draft
 export const ProductCreateInputSchema = z.object({
-  name: z.string().min(1).max(100),
+  orgId: z.string().min(1, "Organization ID is required (must be your organization's UUID, find it at /studio)"),
   slug: z
     .string()
     .min(1)
-    .max(100)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must be lowercase alphanumeric with optional single hyphens"),
+    .max(64)
+    .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with single hyphens"),
+  title: z.string().min(1).max(100).optional(),
+  name: z.string().min(1).max(100).optional(),
   tagline: z.string().min(1).max(200),
-  description: z.string().min(1).max(5000),
-  category: z.string().min(1).max(50),
-  tags: z.array(z.string().min(1).max(30)).min(1).max(20),
   websiteUrl: SafeHttpUrlSchema,
-  repoUrl: SafeHttpUrlSchema.optional(),
   logoUrl: SafeHttpUrlSchema.optional()
-});
+}).transform((data) => ({
+  orgId: data.orgId,
+  slug: data.slug,
+  title: (data.title || data.name || "").trim(),
+  tagline: data.tagline.trim(),
+  websiteUrl: data.websiteUrl,
+  logoUrl: data.logoUrl
+})).pipe(
+  z.object({
+    orgId: z.string().min(1),
+    slug: z.string().min(1).max(64),
+    title: z.string().min(1, "Title is required").max(100),
+    tagline: z.string().min(1).max(200),
+    websiteUrl: SafeHttpUrlSchema,
+    logoUrl: SafeHttpUrlSchema.optional()
+  })
+);
 export type ProductCreateInput = z.infer<typeof ProductCreateInputSchema>;
 
 export const ProductCreateResponseSchema = z.object({
-  success: z.boolean(),
-  message: z.string(),
-  product: ProductSummarySchema
-});
+  data: ProductSummarySchema.optional(),
+  product: ProductSummarySchema.optional(),
+  success: z.boolean().optional(),
+  message: z.string().optional()
+}).passthrough();
 export type ProductCreateResponse = z.infer<typeof ProductCreateResponseSchema>;
 
-// POST /api/v1/products/[slug]/revisions
+// 2. POST /api/v1/products/[slug]/revisions - Upload Revision
 export const ProductRevisionInputSchema = z.object({
-  contentHash: Sha256HexHashSchema,
-  hashVersion: z.literal("v1").default("v1"),
   document: ProductDocumentSchema
 });
 export type ProductRevisionInput = z.infer<typeof ProductRevisionInputSchema>;
 
 export const ProductRevisionResponseSchema = z.object({
-  success: z.boolean(),
-  message: z.string(),
-  revision: ProductRevisionSchema
-});
+  data: ProductRevisionSchema.optional(),
+  revision: ProductRevisionSchema.optional(),
+  success: z.boolean().optional(),
+  message: z.string().optional()
+}).passthrough().refine(
+  (res) => Boolean(res.data?.id || res.data?.revisionId || res.revision?.id || res.revision?.revisionId),
+  { message: "Product revision response must contain a valid revision identifier" }
+);
 export type ProductRevisionResponse = z.infer<typeof ProductRevisionResponseSchema>;
 
-// POST /api/v1/products/[slug]/submit
+// 3. POST /api/v1/products/[slug]/submit - Submit Revision
 export const ProductSubmitInputSchema = z.object({
-  revisionId: z.string().min(1).optional(),
-  notes: z.string().max(1000).optional()
+  revisionId: z.string().uuid().optional(),
+  submissionNotes: z.string().max(500).optional(),
+  isFastTrack: z.boolean().optional(),
+  payOnly: z.boolean().optional()
 });
 export type ProductSubmitInput = z.infer<typeof ProductSubmitInputSchema>;
 
-export const ProductSubmitResponseSchema = z.object({
-  success: z.boolean(),
-  message: z.string(),
-  submissionId: z.string().min(1),
-  status: z.enum(["pending_review", "published", "draft", "rejected"]),
-  estimatedReviewHours: z.number().optional()
-});
+export const ProductSubmitSuccessSchema = z.object({
+  data: z.object({
+    submissionId: z.string(),
+    caseId: z.string().optional(),
+    status: z.string().default("awaiting_human"),
+    isEarlyBird: z.boolean().optional()
+  }).passthrough(),
+  message: z.string().optional(),
+  success: z.boolean().optional()
+}).passthrough();
+
+export const ProductSubmitPaymentRequiredSchema = z.object({
+  requiresPayment: z.literal(true),
+  checkoutUrl: z.string(),
+  amount: z.string(),
+  isEarlyBird: z.boolean().optional(),
+  slotNumber: z.number().optional(),
+  error: z.string().optional()
+}).passthrough();
+
+export const ProductSubmitResponseSchema = z.union([
+  ProductSubmitSuccessSchema,
+  ProductSubmitPaymentRequiredSchema
+]);
 export type ProductSubmitResponse = z.infer<typeof ProductSubmitResponseSchema>;
 
-// GET /api/v1/products
+// 4. GET /api/v1/products - List Products
 export const ProductListQuerySchema = z.object({
-  category: z.string().optional(),
-  tag: z.string().optional(),
-  status: z.enum(["draft", "pending_review", "published", "rejected"]).optional(),
-  page: z.number().int().min(1).default(1),
-  limit: z.number().int().min(1).max(100).default(20),
-  sort: z.enum(["trust_score", "newest", "alphabetical"]).default("trust_score")
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).default(0)
 });
 export type ProductListQuery = z.infer<typeof ProductListQuerySchema>;
 
 export const ProductListResponseSchema = z.object({
-  success: z.boolean(),
-  products: z.array(ProductSummarySchema),
+  data: z.array(ProductSummarySchema),
   pagination: z.object({
-    page: z.number(),
     limit: z.number(),
-    total: z.number(),
-    totalPages: z.number()
+    offset: z.number(),
+    count: z.number()
   })
-});
+}).passthrough();
 export type ProductListResponse = z.infer<typeof ProductListResponseSchema>;
 
-// GET /api/v1/products/[slug]
+// 5. GET /api/v1/products/[slug] - Product Details
 export const ProductDetailResponseSchema = z.object({
-  success: z.boolean(),
-  product: ProductSummarySchema,
-  latestDocument: ProductDocumentSchema.optional(),
-  activeRevision: ProductRevisionSchema.optional()
-});
+  data: z.object({
+    product: ProductSummarySchema,
+    revision: ProductRevisionSchema.optional()
+  }).passthrough()
+}).passthrough();
 export type ProductDetailResponse = z.infer<typeof ProductDetailResponseSchema>;
 
-// GET /api/v1/products/[slug]/status
-export const ProductStatusResponseSchema = z.object({
-  slug: z.string(),
-  status: z.enum(["draft", "pending_review", "published", "rejected"]),
-  trustScore: z.number().min(0).max(100),
-  activeRevisionId: z.string().optional(),
-  contentHash: Sha256HexHashSchema.optional(),
-  lastUpdated: z.string()
+// 6. GET /api/v1/rankings - Community Rankings
+export const RankingsQuerySchema = z.object({
+  window: z.enum(["daily", "weekly", "monthly"]).default("daily")
 });
-export type ProductStatusResponse = z.infer<typeof ProductStatusResponseSchema>;
+export type RankingsQuery = z.infer<typeof RankingsQuerySchema>;
 
-// GET /api/v1/leaderboard
-export const LeaderboardQuerySchema = z.object({
-  timeframe: z.enum(["daily", "weekly", "monthly", "all_time"]).default("all_time"),
-  limit: z.number().int().min(1).max(50).default(10)
+export const RankingItemSchema = z.object({
+  rank: z.number(),
+  productId: z.string(),
+  voteCount: z.number(),
+  score: z.number()
 });
-export type LeaderboardQuery = z.infer<typeof LeaderboardQuerySchema>;
+export type RankingItem = z.infer<typeof RankingItemSchema>;
 
-export const LeaderboardResponseSchema = z.object({
-  timeframe: z.enum(["daily", "weekly", "monthly", "all_time"]),
-  leaderboard: z.array(
-    z.object({
-      rank: z.number().int().min(1),
-      product: ProductSummarySchema,
-      score: z.number(),
-      upvotes: z.number().int().default(0)
-    })
-  )
-});
-export type LeaderboardResponse = z.infer<typeof LeaderboardResponseSchema>;
+export const RankingsResponseSchema = z.object({
+  data: z.object({
+    id: z.string().optional(),
+    windowType: z.string(),
+    windowDate: z.string().optional(),
+    ranks: z.array(RankingItemSchema),
+    snapshotHash: z.string().optional()
+  }).passthrough()
+}).passthrough();
+export type RankingsResponse = z.infer<typeof RankingsResponseSchema>;
 
-// GET /api/v1/search
-export const SearchQuerySchema = z.object({
-  q: z.string().min(1),
-  category: z.string().optional(),
-  tag: z.string().optional(),
-  limit: z.number().int().min(1).max(50).default(10)
+// 7. GET /api/v1/stats - Directory Metrics
+export const StatsDataSchema = z.object({
+  publishedCount: z.number(),
+  outboundClicks: z.number(),
+  registeredBuilders: z.number(),
+  totalVotes: z.number()
 });
-export type SearchQuery = z.infer<typeof SearchQuerySchema>;
+export type StatsData = z.infer<typeof StatsDataSchema>;
 
-export const SearchResponseSchema = z.object({
-  query: z.string(),
-  totalResults: z.number(),
-  results: z.array(ProductSummarySchema)
+export const StatsResponseSchema = z.object({
+  success: z.boolean(),
+  stats: StatsDataSchema.nullable(),
+  updatedAt: z.string().optional(),
+  error: z.string().optional()
+}).passthrough();
+export type StatsResponse = z.infer<typeof StatsResponseSchema>;
+
+// 8. GET /api/health - Database & Runtime Health Probe
+export const HealthResponseSchema = z.object({
+  status: z.string(),
+  database: z.string(),
+  db_name: z.string().optional(),
+  products_count: z.number().optional(),
+  sample_product: z.unknown().optional(),
+  timestamp: z.string(),
+  service: z.string().optional(),
+  error: z.string().optional(),
+  stack: z.string().optional()
+}).passthrough();
+export type HealthResponse = z.infer<typeof HealthResponseSchema>;
+
+// 9. POST /api/v1/votes - Cast Vote (Session Cookie Required)
+export const VoteInputSchema = z.object({
+  productId: z.string().uuid("Product ID must be a valid UUID"),
+  turnstileToken: z.string().optional()
 });
-export type SearchResponse = z.infer<typeof SearchResponseSchema>;
+export type VoteInput = z.infer<typeof VoteInputSchema>;
+
+export const VoteResponseSchema = z.object({
+  data: z.unknown().optional(),
+  error: z.string().optional()
+}).passthrough();
+export type VoteResponse = z.infer<typeof VoteResponseSchema>;
+
+// 10. API Key Management (Session Cookie Required)
+export const ApiKeyItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  prefix: z.string().nullable().optional(),
+  start: z.string().nullable().optional(),
+  enabled: z.boolean(),
+  createdAt: z.string(),
+  expiresAt: z.string().nullable(),
+  organizationId: z.string().nullable()
+});
+export type ApiKeyItem = z.infer<typeof ApiKeyItemSchema>;
+
+export const ApiKeyListResponseSchema = z.object({
+  success: z.boolean().default(true),
+  data: z.array(ApiKeyItemSchema)
+}).passthrough();
+export type ApiKeyListResponse = z.infer<typeof ApiKeyListResponseSchema>;
+
+export const ApiKeyCreateInputSchema = z.object({
+  name: z.string().min(1).max(64),
+  organizationId: z.string().optional(),
+  expiresDays: z.number().int().min(1).max(365).optional()
+});
+export type ApiKeyCreateInput = z.infer<typeof ApiKeyCreateInputSchema>;
+
+export const ApiKeyCreateResponseSchema = z.object({
+  success: z.boolean().default(true),
+  message: z.string().optional(),
+  data: z.object({
+    id: z.string(),
+    name: z.string(),
+    prefix: z.string(),
+    key: z.string(),
+    expiresAt: z.string().nullable(),
+    createdAt: z.string()
+  })
+}).passthrough();
+export type ApiKeyCreateResponse = z.infer<typeof ApiKeyCreateResponseSchema>;
+
+export const ApiKeyRevokeResponseSchema = z.object({
+  success: z.boolean().default(true),
+  message: z.string()
+}).passthrough();
+export type ApiKeyRevokeResponse = z.infer<typeof ApiKeyRevokeResponseSchema>;
+
+// 11. POST /api/v1/media/upload - Media Upload
+export const MediaUploadResponseSchema = z.object({
+  success: z.boolean().default(true),
+  url: z.string(),
+  storageKey: z.string().optional(),
+  sizeBytes: z.number().optional(),
+  mimeType: z.string().optional(),
+  provider: z.enum(["cloudflare-r2", "local-dev", "inline-data"]).optional(),
+  error: z.string().optional()
+}).passthrough();
+export type MediaUploadResponse = z.infer<typeof MediaUploadResponseSchema>;
+
+// 12. POST /api/checkout - Polar Checkout Session
+
+export const CheckoutInputSchema = z.object({
+  productId: z.string().min(1, "Product ID or Offer ID is required"),
+  customerEmail: z.string().email().optional(),
+  productSlug: z.string().optional()
+});
+export type CheckoutInput = z.infer<typeof CheckoutInputSchema>;
+
+export const CheckoutResponseSchema = z.object({
+  url: z.string().url()
+}).passthrough();
+export type CheckoutResponse = z.infer<typeof CheckoutResponseSchema>;

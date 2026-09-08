@@ -1,8 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { AuthorProductDocumentSchema, sanitizeAuthorDocument, computeContentHash } from "@nextlevelbuilder/contracts";
+import { toServerDocumentSafe, computeContentHashSync } from "@nextlevelbuilder/contracts";
 import pc from "picocolors";
-
 export interface ValidateOptions {
   json?: boolean;
 }
@@ -49,29 +48,23 @@ export async function validateCommand(filePath: string, options: ValidateOptions
     return { valid: false, errors: [{ message: errorMsg }] };
   }
 
-  const result = AuthorProductDocumentSchema.safeParse(parsedJson);
+  const result = toServerDocumentSafe(parsedJson);
 
   if (!result.success) {
-    const errors = result.error.errors.map((e) => ({
-      path: e.path.join("."),
-      message: e.message,
-      code: e.code
-    }));
-
     if (options.json) {
-      console.log(JSON.stringify({ valid: false, errors }, null, 2));
+      console.log(JSON.stringify({ valid: false, errors: result.errors }, null, 2));
     } else {
       console.error(pc.red(`✖ Validation failed for ${pc.bold(filePath)}:`));
-      errors.forEach((err) => {
+      result.errors.forEach((err) => {
         console.error(pc.red(`  • ${pc.bold(err.path || "root")}: ${err.message}`));
       });
     }
     process.exitCode = 1;
-    return { valid: false, errors };
+    return { valid: false, errors: result.errors };
   }
 
-  const sanitized = sanitizeAuthorDocument(result.data);
-  const contentHash = await computeContentHash(sanitized);
+  const sanitized = result.document;
+  const contentHash = computeContentHashSync(sanitized);
 
   if (options.json) {
     console.log(
@@ -81,8 +74,9 @@ export async function validateCommand(filePath: string, options: ValidateOptions
           contentHash,
           hashVersion: "v1",
           product: {
-            name: sanitized.name,
-            slug: sanitized.slug,
+            name: sanitized.title,
+            title: sanitized.title,
+            slug: (parsedJson as Record<string, unknown>).slug || sanitized.title.toLowerCase().replace(/[^a-z0-9-]+/g, "-"),
             blocksCount: sanitized.blocks.length
           }
         },
@@ -91,7 +85,7 @@ export async function validateCommand(filePath: string, options: ValidateOptions
       )
     );
   } else {
-    console.log(pc.green(`✔ Schema valid! ${pc.bold(sanitized.name)} (${sanitized.blocks.length} blocks)`));
+    console.log(pc.green(`✔ Schema valid! ${pc.bold(sanitized.title)} (${sanitized.blocks.length} blocks)`));
     console.log(pc.cyan(`  Canonical SHA-256 Hash: ${pc.bold(contentHash)}`));
   }
 

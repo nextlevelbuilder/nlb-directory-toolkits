@@ -18,7 +18,7 @@ describe("CLI: Preview ASCII Renderer", () => {
     expect(rendered).toContain("Scale with confidence");
     expect(rendered).toContain("Product Blocks");
     expect(rendered).toContain("HERO");
-    expect(rendered).toContain("PRICING");
+    expect(rendered).toContain("GRID");
     expect(rendered).toContain("FAQ");
     expect(rendered).toContain("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
   });

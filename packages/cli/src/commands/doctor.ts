@@ -1,25 +1,41 @@
 import { resolveConfig } from "../config.js";
+import { NlbApiClient } from "../api/client.js";
 import pc from "picocolors";
 
-export async function doctorCommand(options: { json?: boolean } = {}): Promise<void> {
-  const config = resolveConfig();
+export interface DoctorOptions {
+  url?: string;
+  json?: boolean;
+}
+
+export async function doctorCommand(options: DoctorOptions = {}): Promise<void> {
+  const config = resolveConfig(options);
+  const client = new NlbApiClient({
+    baseUrl: config.apiUrl,
+    apiKey: config.apiKey,
+    timeoutMs: 5000
+  });
+
   const nodeVersion = process.version;
   const platform = process.platform;
 
   let apiReachable = false;
+  let databaseHealthy = false;
   let responseTimeMs = 0;
+  let healthData: Record<string, unknown> | null = null;
 
   try {
     const start = Date.now();
-    const resp = await fetch(`${config.apiUrl}/api/health`, {
-      method: "GET",
-      signal: AbortSignal.timeout(4000)
-    }).catch(() => null);
-
+    const health = await client.checkHealth();
     responseTimeMs = Date.now() - start;
-    apiReachable = resp !== null && resp.status < 500;
-  } catch {
+
+    apiReachable = true;
+    healthData = health as unknown as Record<string, unknown>;
+    if (health.status === "ok" && health.database === "connected") {
+      databaseHealthy = true;
+    }
+  } catch (err: unknown) {
     apiReachable = false;
+    databaseHealthy = false;
   }
 
   const results = {
@@ -36,12 +52,18 @@ export async function doctorCommand(options: { json?: boolean } = {}): Promise<v
     },
     network: {
       apiReachable,
-      responseTimeMs: apiReachable ? responseTimeMs : undefined
+      databaseHealthy,
+      responseTimeMs: apiReachable ? responseTimeMs : undefined,
+      databaseStatus: healthData?.database ? String(healthData.database) : undefined,
+      serviceStatus: healthData?.status ? String(healthData.status) : undefined
     }
   };
 
   if (options.json) {
     console.log(JSON.stringify(results, null, 2));
+    if (!apiReachable || !databaseHealthy) {
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -58,9 +80,17 @@ export async function doctorCommand(options: { json?: boolean } = {}): Promise<v
 
   console.log(pc.bold("\nConnectivity:"));
   if (apiReachable) {
-    console.log(`  • Endpoint Health: ${pc.green(`✔ Connected (${responseTimeMs}ms)`)}`);
+    if (databaseHealthy) {
+      console.log(`  • API Server:     ${pc.green(`✔ Connected (${responseTimeMs}ms)`)}`);
+      console.log(`  • Database Probe: ${pc.green(`✔ Connected (${String(healthData?.db_name || "nlb")})`)}`);
+    } else {
+      console.log(`  • API Server:     ${pc.green(`✔ Reachable (${responseTimeMs}ms)`)}`);
+      console.log(`  • Database Probe: ${pc.red(`✖ Degraded (${String(healthData?.database || "disconnected")})`)}`);
+      process.exitCode = 1;
+    }
   } else {
-    console.log(`  • Endpoint Health: ${pc.yellow(`⚠️ Unable to reach health endpoint at ${config.apiUrl}`)}`);
+    console.log(`  • Endpoint Health: ${pc.red(`✖ Unable to reach health endpoint at ${config.apiUrl}`)}`);
+    process.exitCode = 1;
   }
   console.log("");
 }
