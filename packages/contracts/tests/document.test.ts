@@ -2,65 +2,70 @@ import { describe, it, expect } from "vitest";
 import {
   AuthorProductDocumentSchema,
   ProductDocumentSchema,
-  sanitizeAuthorDocument
+  toServerDocument,
+  sanitizeAuthorDocument,
+  computeContentHashSync
 } from "../src/document.js";
 import { createDocumentFromTemplate } from "../src/templates.js";
 
 describe("Contracts: Author vs Canonical Document Schemas", () => {
-  it("should reject client-assigned trustScore in author submissions", () => {
-    const doc = createDocumentFromTemplate("developer-cli", {
-      name: "Spoofed Tool",
-      slug: "spoofed-tool",
-      tagline: "Attempting to spoof trust score",
-      description: "Description",
-      websiteUrl: "https://example.com"
-    });
-
-    const spoofed = {
-      ...doc,
-      metadata: {
-        ...doc.metadata,
-        trustScore: 100
-      }
-    };
-
-    expect(() => AuthorProductDocumentSchema.parse(spoofed)).toThrow(/trustScore is a server-assigned directory signal/);
-  });
-
-  it("should reject client-assigned featured placement in author submissions", () => {
-    const doc = createDocumentFromTemplate("developer-cli", {
-      name: "Spoofed Tool",
-      slug: "spoofed-tool",
-      tagline: "Attempting to spoof featured status",
-      description: "Description",
-      websiteUrl: "https://example.com"
-    });
-
-    const spoofed = {
-      ...doc,
-      metadata: {
-        ...doc.metadata,
-        featured: true
-      }
-    };
-
-    expect(() => AuthorProductDocumentSchema.parse(spoofed)).toThrow(/featured placement is a server-assigned signal/);
-  });
-
-  it("should sanitize author documents and enforce unprivileged defaults", () => {
-    const authorDoc = createDocumentFromTemplate("developer-cli", {
-      name: "Clean Tool",
-      slug: "clean-tool",
+  it("should validate a canonical server document", () => {
+    const doc = createDocumentFromTemplate("dev-tool", {
+      title: "Clean Tool",
       tagline: "A clean author submission",
-      description: "Description",
+      description: "Description of a modern developer tool.",
       websiteUrl: "https://example.com"
     });
+
+    const parsed = ProductDocumentSchema.parse(doc);
+    expect(parsed.title).toBe("Clean Tool");
+    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.categorySlugs).toContain("developer-tools");
+    expect(parsed.blocks.length).toBeGreaterThan(0);
+  });
+
+  it("should convert author documents with name/category to canonical server document", () => {
+    const authorDoc = {
+      name: "Author Name Tool",
+      category: "Developer Tools",
+      tags: ["ai", "agents"],
+      tagline: "High impact tool",
+      description: "A comprehensive description that exceeds ten characters.",
+      websiteUrl: "https://example.com",
+      blocks: [
+        {
+          id: "hero-1",
+          type: "hero",
+          props: {
+            headline: "My Headline",
+            primaryCtaText: "Go",
+            primaryCtaUrl: "https://example.com"
+          }
+        }
+      ]
+    };
 
     const parsedAuthor = AuthorProductDocumentSchema.parse(authorDoc);
-    const canonical = sanitizeAuthorDocument(parsedAuthor);
+    const serverDoc = toServerDocument(parsedAuthor);
 
-    expect(canonical.metadata.trustScore).toBe(0);
-    expect(canonical.metadata.featured).toBe(false);
-    expect(ProductDocumentSchema.parse(canonical)).toEqual(canonical);
+    expect(serverDoc.title).toBe("Author Name Tool");
+    expect(serverDoc.categorySlugs).toEqual(["developer-tools"]);
+    expect(serverDoc.tagSlugs).toEqual(["ai", "agents"]);
+    expect(ProductDocumentSchema.parse(serverDoc)).toEqual(serverDoc);
+  });
+
+  it("should compute deterministic content hash matching server format", () => {
+    const doc = createDocumentFromTemplate("saas-launch", {
+      title: "Hash Test Product",
+      tagline: "Deterministic content hashing test",
+      description: "A robust description for hash stability verification.",
+      websiteUrl: "https://example.com"
+    });
+
+    const hash1 = computeContentHashSync(doc);
+    const hash2 = computeContentHashSync(doc);
+
+    expect(hash1).toMatch(/^[a-f0-9]{64}$/);
+    expect(hash1).toBe(hash2);
   });
 });

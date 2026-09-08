@@ -74,7 +74,8 @@ export async function handleWorkerFetch(request: Request, env?: WorkerEnv): Prom
   }
 
   // Optional worker authentication check when WORKER_AUTH_TOKEN is configured
-  let isWorkerAuthenticated = true;
+  // Fail-closed worker authentication: mutations require explicit valid WORKER_AUTH_TOKEN
+  let isWorkerAuthenticated = false;
   if (env?.WORKER_AUTH_TOKEN) {
     const authHeader = request.headers.get("Authorization");
     const expectedToken = `Bearer ${env.WORKER_AUTH_TOKEN}`;
@@ -134,7 +135,10 @@ export async function handleWorkerFetch(request: Request, env?: WorkerEnv): Prom
     try {
       const rawJson = await request.json();
       const listener = sseSessions.get(sessionId);
-      const response = await serverInstance.handleMessage(rawJson, { workerAuth: isWorkerAuthenticated });
+      const response = await serverInstance.handleMessage(rawJson, {
+        workerAuth: isWorkerAuthenticated,
+        env: { NLB_API_KEY: env?.NLB_API_KEY, NLB_API_URL: env?.NLB_API_URL }
+      });
 
       if (response !== null && listener) {
         listener("message", response);
@@ -160,7 +164,10 @@ export async function handleWorkerFetch(request: Request, env?: WorkerEnv): Prom
   if (request.method === "POST" && (url.pathname === "/" || url.pathname === "/mcp")) {
     try {
       const rawJson = await request.json();
-      const response = await serverInstance.handleMessage(rawJson, { workerAuth: isWorkerAuthenticated });
+      const response = await serverInstance.handleMessage(rawJson, {
+        workerAuth: isWorkerAuthenticated,
+        env: { NLB_API_KEY: env?.NLB_API_KEY, NLB_API_URL: env?.NLB_API_URL }
+      });
 
       if (response === null) {
         return new Response(null, { status: 204, headers: corsHeaders });

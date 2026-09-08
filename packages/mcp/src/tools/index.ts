@@ -1,13 +1,11 @@
 import {
-  ProductDocumentSchema,
-  AuthorProductDocumentSchema,
-  sanitizeAuthorDocument,
-  computeContentHash,
+  toServerDocumentSafe,
+  computeContentHashSync,
   listTemplates,
   getTemplate,
-  ProductCreateResponseSchema,
   ProductRevisionResponseSchema,
-  ProductSubmitResponseSchema
+  ProductSubmitSuccessSchema,
+  ProductSubmitPaymentRequiredSchema
 } from "@nextlevelbuilder/contracts";
 
 export interface McpToolDefinition {
@@ -18,20 +16,23 @@ export interface McpToolDefinition {
     properties: Record<string, unknown>;
     required?: string[];
   };
-  handler: (args: Record<string, unknown>, context?: { workerAuth?: boolean }) => Promise<unknown>;
+  handler: (
+    args: Record<string, unknown>,
+    context?: { workerAuth?: boolean; env?: { NLB_API_KEY?: string; NLB_API_URL?: string } }
+  ) => Promise<unknown>;
 }
 
-const ALLOWED_HOSTS = new Set([
-  "nextlevelbuilder.io",
-  "www.nextlevelbuilder.io",
-  "staging.nextlevelbuilder.io",
-  "localhost",
-  "127.0.0.1"
-]);
+const ALLOWED_HOSTS: Record<string, true> = {
+  "nextlevelbuilder.io": true,
+  "www.nextlevelbuilder.io": true,
+  "staging.nextlevelbuilder.io": true,
+  "localhost": true,
+  "127.0.0.1": true
+};
 
 /**
  * Validates that an API URL belongs to an authorized NextLevelBuilder domain or local loopback.
- * Prevents SSRF and credential exfiltration.
+ * Strictly rejects .local domain names to prevent SSRF and internal network scanning.
  */
 export function validateAllowedApiUrl(apiUrlRaw?: string): string {
   const defaultUrl = "https://nextlevelbuilder.io";
@@ -47,9 +48,13 @@ export function validateAllowedApiUrl(apiUrlRaw?: string): string {
   }
 
   const hostname = parsed.hostname.toLowerCase();
-  const isLoopback = hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".local");
+  const isLoopback =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]";
 
-  if (!ALLOWED_HOSTS.has(hostname) && !isLoopback) {
+  if (!ALLOWED_HOSTS[hostname] && !isLoopback) {
     throw new Error(
       `Access to '${hostname}' is disallowed. Allowed endpoints: https://nextlevelbuilder.io, https://staging.nextlevelbuilder.io, or localhost.`
     );
@@ -62,6 +67,37 @@ export function validateAllowedApiUrl(apiUrlRaw?: string): string {
   return parsed.origin;
 }
 
+const ALLOWED_MIME_TYPES: Record<string, true> = {
+  "image/png": true,
+  "image/jpeg": true,
+  "image/jpg": true,
+  "image/webp": true,
+  "image/svg+xml": true,
+  "image/gif": true,
+  "video/mp4": true,
+  "video/webm": true,
+  "video/quicktime": true
+};
+export function resolveToolEnv(
+  args: Record<string, unknown>,
+  context?: { workerAuth?: boolean; env?: { NLB_API_KEY?: string; NLB_API_URL?: string } }
+): { apiUrl: string; apiKey?: string } {
+  const rawUrl =
+    typeof args.api_url === "string" && args.api_url.trim()
+      ? args.api_url.trim()
+      : context?.env?.NLB_API_URL || (typeof process !== "undefined" ? process.env?.NLB_API_URL : undefined);
+
+  const apiUrl = validateAllowedApiUrl(rawUrl);
+
+  const apiKey =
+    typeof args.api_key === "string" && args.api_key.trim()
+      ? args.api_key.trim()
+      : context?.env?.NLB_API_KEY || (typeof process !== "undefined" ? process.env?.NLB_API_KEY : undefined);
+
+  return { apiUrl, apiKey };
+}
+
+
 export const TOOLS: McpToolDefinition[] = [
   // 1. validate_listing
   {
@@ -72,7 +108,7 @@ export const TOOLS: McpToolDefinition[] = [
       properties: {
         document: {
           type: "object",
-          description: "The complete ProductDocument JSON object containing name, slug, tagline, description, category, tags, websiteUrl, and blocks."
+          description: "The complete product document JSON object containing title/name, tagline, description, websiteUrl, and blocks."
         }
       },
       required: ["document"]
@@ -82,30 +118,24 @@ export const TOOLS: McpToolDefinition[] = [
         throw new Error("Missing required 'document' parameter.");
       }
 
-      const parseResult = AuthorProductDocumentSchema.safeParse(args.document);
-
-      if (!parseResult.success) {
+      const docResult = toServerDocumentSafe(args.document);
+      if (!docResult.success) {
         return {
           valid: false,
-          errors: parseResult.error.errors.map((e) => ({
-            path: e.path.join("."),
-            message: e.message,
-            code: e.code
-          }))
+          errors: docResult.errors
         };
       }
 
-      const sanitized = sanitizeAuthorDocument(parseResult.data);
-      const contentHash = await computeContentHash(sanitized);
+      const serverDoc = docResult.document;
+      const contentHash = computeContentHashSync(serverDoc);
       return {
         valid: true,
         contentHash,
         hashVersion: "v1",
         product: {
-          name: sanitized.name,
-          slug: sanitized.slug,
-          category: sanitized.category,
-          blocksCount: sanitized.blocks.length
+          title: serverDoc.title,
+          categorySlugs: serverDoc.categorySlugs,
+          blocksCount: serverDoc.blocks.length
         }
       };
     }
@@ -114,17 +144,21 @@ export const TOOLS: McpToolDefinition[] = [
   // 2. submit_product
   {
     name: "submit_product",
-    description: "Submit a validated product document into the Next Level Builders Directory moderation review queue.",
+    description: "Submit a validated product document into the Next Level Builders Directory moderation review queue (with Polar payment handling).",
     inputSchema: {
       type: "object",
       properties: {
         document: {
           type: "object",
-          description: "The complete ProductDocument JSON object"
+          description: "The complete product document JSON object"
+        },
+        org_id: {
+          type: "string",
+          description: "Organization UUID identifier (obtain from https://nextlevelbuilder.io/studio)"
         },
         api_key: {
           type: "string",
-          description: "Next Level Builders API key (or uses caller-configured credential)"
+          description: "Next Level Builders API key (format: nlb_live_...)"
         },
         api_url: {
           type: "string",
@@ -133,34 +167,38 @@ export const TOOLS: McpToolDefinition[] = [
         notes: {
           type: "string",
           description: "Optional notes for the review team"
+        },
+        is_fast_track: {
+          type: "boolean",
+          description: "Request fast-track moderation"
+        },
+        pay_only: {
+          type: "boolean",
+          description: "Generate Polar payment checkout session without immediate review submission"
         }
       },
-      required: ["document"]
+      required: ["document", "org_id"]
     },
     handler: async (args, context) => {
-      // Authenticate mutation access first:
-      if (context && context.workerAuth === false && (!args.api_key || typeof args.api_key !== "string")) {
-        throw new Error("Unauthorized: Worker authentication token or explicit api_key parameter is required to submit products.");
-      }
-
       if (!args.document || typeof args.document !== "object") {
         throw new Error("Missing required 'document' parameter.");
       }
 
-      // Strictly parse with AuthorProductDocumentSchema to reject client-assigned trust signals
-      const parseResult = AuthorProductDocumentSchema.safeParse(args.document);
-      if (!parseResult.success) {
+      if (!args.org_id || typeof args.org_id !== "string" || !args.org_id.trim()) {
+        throw new Error("Missing required 'org_id' parameter. Must be your organization UUID from https://nextlevelbuilder.io/studio.");
+      }
+
+      const docResult = toServerDocumentSafe(args.document);
+      if (!docResult.success) {
         throw new Error(
-          `Document schema invalid: ${parseResult.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ")}`
+          `Document schema invalid: ${docResult.errors.map((e) => `${e.path}: ${e.message}`).join("; ")}`
         );
       }
 
-      // Sanitize document to guarantee unprivileged initial trust state
-      const doc = sanitizeAuthorDocument(parseResult.data);
-      const contentHash = await computeContentHash(doc);
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
-
-      const apiKey = typeof args.api_key === "string" && args.api_key.trim() ? args.api_key.trim() : process.env.NLB_API_KEY;
+      const raw = args.document as Record<string, unknown>;
+      const canonicalDoc = docResult.document;
+      const contentHash = computeContentHashSync(canonicalDoc);
+      const { apiUrl, apiKey } = resolveToolEnv(args, context);
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -168,47 +206,47 @@ export const TOOLS: McpToolDefinition[] = [
       };
       if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
+        headers["x-api-key"] = apiKey;
       }
 
+      const rawSlug = typeof raw.slug === "string" ? raw.slug : canonicalDoc.title.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+      const slug = rawSlug.replace(/^-|-$/g, "").slice(0, 64);
+      const orgId = String(args.org_id).trim();
       const timeoutSignal = AbortSignal.timeout(15000);
 
-      // Step 1: Create Product Metadata
-      const createResp = await fetch(`${apiUrl}/api/v1/products`, {
+      try {
+        const createResp = await fetch(`${apiUrl}/api/v1/products`, {
+          method: "POST",
+          headers,
+          signal: AbortSignal.timeout(15000),
+          body: JSON.stringify({
+            orgId,
+            slug,
+            title: canonicalDoc.title,
+            tagline: canonicalDoc.tagline,
+            websiteUrl: canonicalDoc.websiteUrl,
+            logoUrl: canonicalDoc.logoUrl
+          })
+        });
+        if (!createResp.ok) {
+          const errorText = await createResp.text().catch(() => "");
+          if (!errorText.includes("already exists")) {
+            throw new Error(`Failed to create product metadata (HTTP ${createResp.status}): ${errorText || createResp.statusText}`);
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes("already exists")) {
+          throw err;
+        }
+      }
+      // Step 2: Upload Revision
+      const revResp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/revisions`, {
         method: "POST",
         headers,
-        signal: timeoutSignal,
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
-          name: doc.name,
-          slug: doc.slug,
-          tagline: doc.tagline,
-          description: doc.description,
-          category: doc.category,
-          tags: doc.tags,
-          websiteUrl: doc.websiteUrl,
-          repoUrl: doc.repoUrl,
-          logoUrl: doc.logoUrl
-        })
-      });
-
-      if (!createResp.ok) {
-        const errorText = await createResp.text().catch(() => "");
-        throw new Error(`Failed to create product metadata (HTTP ${createResp.status}): ${errorText || createResp.statusText}`);
-      }
-
-      const createData = ProductCreateResponseSchema.parse(await createResp.json());
-      if (!createData.success) {
-        throw new Error(`Directory rejected product creation: ${createData.message}`);
-      }
-
-      // Step 2: Create Revision
-      const revResp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(doc.slug)}/revisions`, {
-        method: "POST",
-        headers,
-        signal: timeoutSignal,
-        body: JSON.stringify({
-          contentHash,
-          hashVersion: "v1",
-          document: doc
+          document: canonicalDoc
         })
       });
 
@@ -218,40 +256,65 @@ export const TOOLS: McpToolDefinition[] = [
       }
 
       const revData = ProductRevisionResponseSchema.parse(await revResp.json());
-      if (!revData.success || !revData.revision.revisionId) {
-        throw new Error(`Directory rejected revision upload: ${revData.message || "Missing revisionId"}`);
+      const revisionId =
+        (revData.data as Record<string, unknown>)?.id ||
+        (revData.data as Record<string, unknown>)?.revisionId ||
+        (revData.revision as Record<string, unknown>)?.id ||
+        (revData.revision as Record<string, unknown>)?.revisionId;
+
+      if (!revisionId || typeof revisionId !== "string") {
+        throw new Error("Revision creation succeeded on server, but no valid revision ID was returned. Aborting submission to prevent submitting an unintended revision.");
       }
 
-      const revisionId = revData.revision.revisionId;
-
-      // Step 3: Submit Revision
-      const submitResp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(doc.slug)}/submit`, {
+      // Step 3: Submit to Moderation Queue
+      const submitResp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/submit`, {
         method: "POST",
         headers,
-        signal: timeoutSignal,
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
-          revisionId,
-          notes: typeof args.notes === "string" ? args.notes : undefined
+          revisionId: typeof revisionId === "string" ? revisionId : undefined,
+          submissionNotes: typeof args.notes === "string" ? args.notes : undefined,
+          isFastTrack: Boolean(args.is_fast_track),
+          payOnly: Boolean(args.pay_only)
         })
       });
 
-      if (!submitResp.ok) {
-        const errorText = await submitResp.text().catch(() => "");
-        throw new Error(`Failed to submit into review queue (HTTP ${submitResp.status}): ${errorText || submitResp.statusText}`);
+      const submitText = await submitResp.text().catch(() => "{}");
+      let submitJson: unknown;
+      try {
+        submitJson = JSON.parse(submitText);
+      } catch {
+        submitJson = {};
       }
 
-      const submitData = ProductSubmitResponseSchema.parse(await submitResp.json());
-      if (!submitData.success) {
-        throw new Error(`Directory rejected submission: ${submitData.message}`);
+      if (submitResp.status === 402) {
+        const payData = ProductSubmitPaymentRequiredSchema.parse(submitJson);
+        return {
+          status: "payment_required",
+          slug,
+          message: "Payment required to activate directory listing slot.",
+          checkoutUrl: payData.checkoutUrl,
+          amount: payData.amount,
+          isEarlyBird: payData.isEarlyBird,
+          slotNumber: payData.slotNumber,
+          previewUrl: `${apiUrl}/studio/products/${slug}/preview`
+        };
       }
+
+      if (!submitResp.ok) {
+        throw new Error(`Failed to submit into review queue (HTTP ${submitResp.status}): ${submitText}`);
+      }
+
+      const subSuccess = ProductSubmitSuccessSchema.parse(submitJson);
+      const subData = (subSuccess as Record<string, unknown>).data as Record<string, unknown> | undefined;
 
       return {
-        success: true,
-        slug: doc.slug,
-        submissionId: submitData.submissionId,
-        status: submitData.status,
+        status: "submitted",
+        slug,
+        submissionId: subData?.submissionId || "submitted",
+        caseId: subData?.caseId,
         contentHash,
-        product: createData.product
+        previewUrl: `${apiUrl}/studio/products/${slug}/preview`
       };
     }
   },
@@ -259,7 +322,63 @@ export const TOOLS: McpToolDefinition[] = [
   // 3. get_product
   {
     name: "get_product",
-    description: "Fetch full product details and blocks outline from the Next Level Builders Directory by slug.",
+    description: "Fetch product details and blocks outline from the Next Level Builders Directory by slug (supports JSON or Markdown format).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: {
+          type: "string",
+          description: "Product slug identifier"
+        },
+        format: {
+          type: "string",
+          enum: ["json", "markdown"],
+          description: "Output format ('json' for structured metadata, 'markdown' for LLM-optimized text). Default is 'json'."
+        },
+        api_url: {
+          type: "string",
+          description: "Directory API endpoint (optional)"
+        }
+      },
+      required: ["slug"]
+    },
+    handler: async (args) => {
+      if (!args.slug || typeof args.slug !== "string") {
+        throw new Error("Missing required 'slug' parameter.");
+      }
+      const slug = args.slug.trim();
+      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const format = args.format === "markdown" ? "markdown" : "json";
+
+      if (format === "markdown") {
+        const resp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/markdown`, {
+          headers: { Accept: "text/markdown, text/plain" },
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!resp.ok) {
+          throw new Error(`Product '${slug}' markdown not found (HTTP ${resp.status})`);
+        }
+        const text = await resp.text();
+        return { slug, markdown: text };
+      }
+
+      const resp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Product '${slug}' not found on directory (HTTP ${resp.status})`);
+      }
+
+      return resp.json();
+    }
+  },
+
+  // 4. get_product_markdown
+  {
+    name: "get_product_markdown",
+    description: "Export product details as markdown structured feed formatted for AI agents and LLM context windows.",
     inputSchema: {
       type: "object",
       properties: {
@@ -281,119 +400,410 @@ export const TOOLS: McpToolDefinition[] = [
       const slug = args.slug.trim();
       const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
 
-      const resp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}`, {
+      const resp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/markdown`, {
+        headers: { Accept: "text/markdown, text/plain" },
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Product '${slug}' markdown not found (HTTP ${resp.status})`);
+      }
+
+      const text = await resp.text();
+      return { slug, markdown: text };
+    }
+  },
+
+  // 5. list_products
+  {
+    name: "list_products",
+    description: "List published directory products with pagination.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "number",
+          description: "Maximum number of items to return (1-50, default: 20)"
+        },
+        offset: {
+          type: "number",
+          description: "Pagination offset (default: 0)"
+        },
+        api_url: {
+          type: "string",
+          description: "Directory API endpoint (optional)"
+        }
+      }
+    },
+    handler: async (args) => {
+      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const params = new URLSearchParams();
+      if (typeof args.limit === "number") params.set("limit", String(Math.min(50, Math.max(1, args.limit))));
+      if (typeof args.offset === "number") params.set("offset", String(Math.max(0, args.offset)));
+
+      const resp = await fetch(`${apiUrl}/api/v1/products?${params.toString()}`, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(15000)
       });
 
       if (!resp.ok) {
-        throw new Error(`Product '${slug}' not found on directory (HTTP ${resp.status})`);
+        throw new Error(`List products failed (HTTP ${resp.status})`);
       }
 
       return resp.json();
     }
   },
 
-  // 4. search_products
+  // 6. get_leaderboard
   {
-    name: "search_products",
-    description: "Search Next Level Builders Directory by keyword query, category, or tag.",
+    name: "get_leaderboard",
+    description: "Get directory community rankings leaderboard by timeframe window (daily, weekly, or monthly).",
     inputSchema: {
       type: "object",
       properties: {
-        query: {
+        window: {
           type: "string",
-          description: "Search keyword"
+          enum: ["daily", "weekly", "monthly"],
+          description: "Leaderboard timeframe window (default: daily)"
         },
-        category: {
+        api_url: {
           type: "string",
-          description: "Optional category filter"
-        },
-        tag: {
+          description: "Directory API endpoint (optional)"
+        }
+      }
+    },
+    handler: async (args) => {
+      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const windowType = args.window === "weekly" ? "weekly" : args.window === "monthly" ? "monthly" : "daily";
+
+      const resp = await fetch(`${apiUrl}/api/v1/rankings?window=${windowType}`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Rankings request failed (HTTP ${resp.status})`);
+      }
+
+      return resp.json();
+    }
+  },
+
+  // 7. get_stats
+  {
+    name: "get_stats",
+    description: "Get aggregate Next Level Builders directory metrics (published products, click-outs, registered builders, total votes).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        api_url: {
           type: "string",
-          description: "Optional tag filter"
+          description: "Directory API endpoint (optional)"
+        }
+      }
+    },
+    handler: async (args) => {
+      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+
+      const resp = await fetch(`${apiUrl}/api/v1/stats`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Stats request failed (HTTP ${resp.status})`);
+      }
+
+      return resp.json();
+    }
+  },
+
+  // 8. check_health
+  {
+    name: "check_health",
+    description: "Check database and service health probe on Next Level Builders directory.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        api_url: {
+          type: "string",
+          description: "Directory API endpoint (optional)"
+        }
+      }
+    },
+    handler: async (args) => {
+      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+
+      const resp = await fetch(`${apiUrl}/api/health`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Health probe returned HTTP ${resp.status}`);
+      }
+
+      const json = (await resp.json()) as Record<string, unknown>;
+      return {
+        status: json.status,
+        database: json.database,
+        db_name: json.db_name,
+        products_count: json.products_count,
+        timestamp: json.timestamp
+      };
+    }
+  },
+
+  // 9. cast_vote
+  {
+    name: "cast_vote",
+    description: "Cast an organic community vote for a product. Note: Organic voting requires a verified user session cookie to prevent bot voting.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        product_id: {
+          type: "string",
+          description: "Product UUID to vote for"
         },
-        limit: {
-          type: "number",
-          description: "Maximum number of results to return (default: 10, max: 50)"
+        turnstile_token: {
+          type: "string",
+          description: "Cloudflare Turnstile verification token (optional)"
+        },
+        session_cookie: {
+          type: "string",
+          description: "Better Auth user session cookie (required by server for voting)"
         },
         api_url: {
           type: "string",
           description: "Directory API endpoint (optional)"
         }
       },
-      required: ["query"]
+      required: ["product_id"]
     },
     handler: async (args) => {
-      if (!args.query || typeof args.query !== "string") {
-        throw new Error("Missing required 'query' parameter.");
+      if (!args.product_id || typeof args.product_id !== "string") {
+        throw new Error("Missing required 'product_id' parameter.");
       }
-      const q = args.query.trim();
       const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
-      const params = new URLSearchParams();
-      params.set("q", q);
-      if (typeof args.category === "string") params.set("category", args.category);
-      if (typeof args.tag === "string") params.set("tag", args.tag);
-      if (typeof args.limit === "number") params.set("limit", String(Math.min(50, Math.max(1, args.limit))));
 
-      const resp = await fetch(`${apiUrl}/api/v1/search?${params.toString()}`, {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(15000)
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      };
+
+      const cookie = typeof args.session_cookie === "string" ? args.session_cookie : process.env.NLB_SESSION_COOKIE;
+      if (cookie) {
+        headers["Cookie"] = cookie;
+      }
+
+      const resp = await fetch(`${apiUrl}/api/v1/votes`, {
+        method: "POST",
+        headers,
+        signal: AbortSignal.timeout(15000),
+        body: JSON.stringify({
+          productId: args.product_id,
+          turnstileToken: typeof args.turnstile_token === "string" ? args.turnstile_token : undefined
+        })
       });
 
-      if (!resp.ok) {
-        throw new Error(`Search request failed (HTTP ${resp.status})`);
+      const text = await resp.text();
+      let data: unknown;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { message: text };
       }
 
-      return resp.json();
+      if (!resp.ok) {
+        if (resp.status === 401) {
+          throw new Error("Unauthorized (HTTP 401): Organic voting requires a verified user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
+        }
+        if (resp.status === 409 || text.includes("already voted")) {
+          throw new Error("Conflict (HTTP 409): Already voted for this product today.");
+        }
+        if (resp.status === 429) {
+          throw new Error("Rate Limited (HTTP 429): Voting rate limit exceeded. Please wait before voting again.");
+        }
+        throw new Error(`Failed to cast vote (HTTP ${resp.status}): ${text}`);
+      }
+
+      return data;
     }
   },
 
-  // 5. get_leaderboard
+  // 10. upload_media
   {
-    name: "get_leaderboard",
-    description: "Get directory leaderboard ranked by community trust scores and upvotes.",
+    name: "upload_media",
+    description: "Upload an image (up to 10MB) or video (up to 100MB) to Next Level Builders storage.",
     inputSchema: {
       type: "object",
       properties: {
-        timeframe: {
+        file_base64: {
           type: "string",
-          enum: ["daily", "weekly", "monthly", "all_time"],
-          description: "Leaderboard timeframe (default: all_time)"
+          description: "Base64 encoded file content"
         },
-        limit: {
-          type: "number",
-          description: "Maximum items (default: 10, max: 50)"
+        filename: {
+          type: "string",
+          description: "Filename including extension (e.g., 'screenshot.png', 'demo.mp4')"
+        },
+        mime_type: {
+          type: "string",
+          description: "MIME type (e.g., 'image/png', 'video/mp4')"
+        },
+        folder: {
+          type: "string",
+          description: "Target subfolder (default: 'uploads')"
+        },
+        api_key: {
+          type: "string",
+          description: "Next Level Builders API key (optional)"
         },
         api_url: {
           type: "string",
           description: "Directory API endpoint (optional)"
         }
-      }
+      },
+      required: ["file_base64", "filename"]
     },
-    handler: async (args) => {
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
-      const params = new URLSearchParams();
-      if (typeof args.timeframe === "string") params.set("timeframe", args.timeframe);
-      if (typeof args.limit === "number") params.set("limit", String(Math.min(50, Math.max(1, args.limit))));
+    handler: async (args, context) => {
+      if (!args.file_base64 || typeof args.file_base64 !== "string") {
+        throw new Error("Missing required 'file_base64' parameter.");
+      }
+      if (!args.filename || typeof args.filename !== "string") {
+        throw new Error("Missing required 'filename' parameter.");
+      }
+      const filename = args.filename.trim();
+      const folder = typeof args.folder === "string" ? args.folder.replace(/[^a-z0-9_-]/gi, "") : "uploads";
+      const ext = filename.split(".").pop()?.toLowerCase();
+      const extMimeMap: Record<string, string> = {
+        png: "image/png",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        webp: "image/webp",
+        svg: "image/svg+xml",
+        gif: "image/gif",
+        mp4: "video/mp4",
+        webm: "video/webm",
+        mov: "video/quicktime"
+      };
+      const mimeType = typeof args.mime_type === "string" && args.mime_type.trim()
+        ? args.mime_type.toLowerCase()
+        : ext ? extMimeMap[ext] : "";
 
-      const resp = await fetch(`${apiUrl}/api/v1/leaderboard?${params.toString()}`, {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(15000)
+      if (!mimeType || !ALLOWED_MIME_TYPES[mimeType]) {
+        throw new Error(`Disallowed or missing MIME type '${mimeType}'. Allowed: ${Object.keys(ALLOWED_MIME_TYPES).join(", ")}`);
+      }
+
+      const isVideo = mimeType.startsWith("video/") || /\.(mp4|webm|mov)$/i.test(filename);
+      const maxLimit = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
+      if (args.file_base64.length * 0.75 > maxLimit * 1.05) {
+        throw new Error(`Estimated file size exceeds maximum limit of ${isVideo ? "100MB" : "10MB"}`);
+      }
+
+      // Convert base64 to binary buffer
+      const base64Data = args.file_base64.replace(/^data:[^;]+;base64,/, "");
+      const binaryStr = atob(base64Data);
+      const len = binaryStr.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+
+      if (bytes.length > maxLimit) {
+        throw new Error(`File size (${(bytes.length / (1024 * 1024)).toFixed(2)}MB) exceeds maximum limit of ${isVideo ? "100MB" : "10MB"}`);
+      }
+
+      const { apiUrl, apiKey } = resolveToolEnv(args, context);
+
+      const formData = new FormData();
+      const blob = new Blob([bytes as unknown as BlobPart], { type: mimeType });
+      formData.append("file", blob, filename);
+      formData.append("folder", folder);
+
+      const headers: Record<string, string> = {
+        Accept: "application/json"
+      };
+      if (apiKey) {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+        headers["x-api-key"] = apiKey;
+      }
+
+      const resp = await fetch(`${apiUrl}/api/v1/media/upload`, {
+        method: "POST",
+        headers,
+        body: formData,
+        signal: AbortSignal.timeout(30000)
       });
 
       if (!resp.ok) {
-        throw new Error(`Leaderboard request failed (HTTP ${resp.status})`);
+        const errText = await resp.text().catch(() => "");
+        throw new Error(`Media upload failed (HTTP ${resp.status}): ${errText || resp.statusText}`);
       }
 
       return resp.json();
     }
   },
 
-  // 6. list_templates
+  // 11. create_checkout
+  {
+    name: "create_checkout",
+    description: "Create a Polar checkout session for directory publishing slots or memberships.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        product_id: {
+          type: "string",
+          description: "Polar product UUID (obtain from /studio or your platform configuration)"
+        },
+        customer_email: {
+          type: "string",
+          description: "Customer email address for entitlement delivery"
+        },
+        product_slug: {
+          type: "string",
+          description: "Product slug to bind publishing slot to"
+        },
+        api_url: {
+          type: "string",
+          description: "Directory API endpoint (optional)"
+        }
+      },
+      required: ["product_id"]
+    },
+    handler: async (args) => {
+      if (!args.product_id || typeof args.product_id !== "string") {
+        throw new Error("Missing required 'product_id' parameter.");
+      }
+
+      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+
+      const resp = await fetch(`${apiUrl}/api/checkout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify({
+          productId: args.product_id,
+          customerEmail: typeof args.customer_email === "string" ? args.customer_email : undefined,
+          productSlug: typeof args.product_slug === "string" ? args.product_slug : undefined
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        throw new Error(`Failed to create checkout session (HTTP ${resp.status}): ${text || resp.statusText}`);
+      }
+
+      return resp.json();
+    }
+  },
+
+  // 12. list_templates
   {
     name: "list_templates",
-    description: "Get available Next Level Builders layout templates (SaaS Launch, AI Agent / Tool, Developer CLI, Curated Community, Minimalist Showcase) with sample blocks.",
+    description: "Get available Next Level Builders layout templates with sample block blueprints.",
     inputSchema: {
       type: "object",
       properties: {
@@ -411,12 +821,12 @@ export const TOOLS: McpToolDefinition[] = [
         }
         return {
           template: {
+            id: t.id,
             name: t.name,
             slug: t.slug,
             description: t.description,
             recommendedCategory: t.recommendedCategory,
-            blockTypes: t.blockTypes,
-            sampleBlocks: t.sampleBlocks
+            blockTypes: t.blockTypes
           }
         };
       }
@@ -424,6 +834,7 @@ export const TOOLS: McpToolDefinition[] = [
       const templates = listTemplates();
       return {
         templates: templates.map((t) => ({
+          id: t.id,
           name: t.name,
           slug: t.slug,
           description: t.description,
@@ -431,6 +842,171 @@ export const TOOLS: McpToolDefinition[] = [
           blockTypes: t.blockTypes
         }))
       };
+    }
+  },
+
+  // 13. list_api_keys
+  {
+    name: "list_api_keys",
+    description: "List active developer API keys for the current account. Note: Requires session cookie.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_cookie: {
+          type: "string",
+          description: "Better Auth session cookie"
+        },
+        api_url: {
+          type: "string",
+          description: "Directory API endpoint (optional)"
+        }
+      }
+    },
+    handler: async (args) => {
+      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const headers: Record<string, string> = {
+        Accept: "application/json"
+      };
+      const cookie = typeof args.session_cookie === "string" ? args.session_cookie : process.env.NLB_SESSION_COOKIE;
+      if (cookie) {
+        headers["Cookie"] = cookie;
+      }
+
+      const resp = await fetch(`${apiUrl}/api/v1/api-keys`, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        if (resp.status === 401) {
+          throw new Error("Unauthorized (HTTP 401): API key management requires a signed-in user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
+        }
+        throw new Error(`Failed to list API keys (HTTP ${resp.status}): ${errText || resp.statusText}`);
+      }
+
+      return resp.json();
+    }
+  },
+
+  // 14. create_api_key
+  {
+    name: "create_api_key",
+    description: "Create a new developer API key. Note: Requires user session cookie. Raw secret key is returned only once.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Name or label for the API key"
+        },
+        organization_id: {
+          type: "string",
+          description: "Optional organization UUID"
+        },
+        expires_days: {
+          type: "number",
+          description: "Optional expiration in days (1-365)"
+        },
+        session_cookie: {
+          type: "string",
+          description: "Better Auth session cookie"
+        },
+        api_url: {
+          type: "string",
+          description: "Directory API endpoint (optional)"
+        }
+      },
+      required: ["name"]
+    },
+    handler: async (args) => {
+      if (!args.name || typeof args.name !== "string") {
+        throw new Error("Missing required 'name' parameter.");
+      }
+      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      };
+      const cookie = typeof args.session_cookie === "string" ? args.session_cookie : process.env.NLB_SESSION_COOKIE;
+      if (cookie) {
+        headers["Cookie"] = cookie;
+      }
+
+      const resp = await fetch(`${apiUrl}/api/v1/api-keys`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name: args.name,
+          organizationId: typeof args.organization_id === "string" ? args.organization_id : undefined,
+          expiresDays: typeof args.expires_days === "number" ? args.expires_days : undefined
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        if (resp.status === 401) {
+          throw new Error("Unauthorized (HTTP 401): API key creation requires a signed-in user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
+        }
+        throw new Error(`Failed to create API key (HTTP ${resp.status}): ${errText || resp.statusText}`);
+      }
+
+      return resp.json();
+    }
+  },
+
+  // 15. revoke_api_key
+  {
+    name: "revoke_api_key",
+    description: "Revoke an existing developer API key by ID. Note: Requires user session cookie.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "API key ID to revoke"
+        },
+        session_cookie: {
+          type: "string",
+          description: "Better Auth session cookie"
+        },
+        api_url: {
+          type: "string",
+          description: "Directory API endpoint (optional)"
+        }
+      },
+      required: ["id"]
+    },
+    handler: async (args) => {
+      if (!args.id || typeof args.id !== "string") {
+        throw new Error("Missing required 'id' parameter.");
+      }
+      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const headers: Record<string, string> = {
+        Accept: "application/json"
+      };
+      const cookie = typeof args.session_cookie === "string" ? args.session_cookie : process.env.NLB_SESSION_COOKIE;
+      if (cookie) {
+        headers["Cookie"] = cookie;
+      }
+
+      const resp = await fetch(`${apiUrl}/api/v1/api-keys/${encodeURIComponent(args.id)}`, {
+        method: "DELETE",
+        headers,
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        if (resp.status === 401) {
+          throw new Error("Unauthorized (HTTP 401): API key revocation requires a signed-in user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
+        }
+        throw new Error(`Failed to revoke API key (HTTP ${resp.status}): ${errText || resp.statusText}`);
+      }
+
+      return resp.json();
     }
   }
 ];

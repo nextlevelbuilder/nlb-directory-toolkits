@@ -6,6 +6,7 @@ export interface GetOptions {
   url?: string;
   apiKey?: string;
   json?: boolean;
+  markdown?: boolean;
 }
 
 export async function getCommand(slug: string, options: GetOptions = {}): Promise<void> {
@@ -16,6 +17,12 @@ export async function getCommand(slug: string, options: GetOptions = {}): Promis
   });
 
   try {
+    if (options.markdown) {
+      const md = await client.getProductMarkdown(slug);
+      process.stdout.write(md.endsWith("\n") ? md : `${md}\n`);
+      return;
+    }
+
     const resp = await client.getProduct(slug);
 
     if (options.json) {
@@ -23,21 +30,26 @@ export async function getCommand(slug: string, options: GetOptions = {}): Promis
       return;
     }
 
-    const prod = resp.product;
-    console.log(pc.cyan(`\n🔍 Product Details: ${pc.bold(prod.name)}`));
-    console.log(`  • Slug:        ${prod.slug}`);
-    console.log(`  • Tagline:     ${pc.italic(prod.tagline)}`);
-    console.log(`  • Category:    ${prod.category}`);
-    console.log(`  • Tags:        ${prod.tags.join(", ")}`);
-    console.log(`  • Website:     ${pc.blue(prod.websiteUrl)}`);
-    console.log(`  • Trust Score: ${pc.green(`${prod.trustScore}%`)}`);
-    console.log(`  • Status:      ${prod.status}`);
-    console.log(`  • Created:     ${prod.createdAt}`);
+    const rawData = (resp as Record<string, unknown>).data as Record<string, unknown> | undefined;
+    const dataObj = rawData || (resp as Record<string, unknown>);
+    const prod = (dataObj.product as Record<string, unknown>) || dataObj;
+    const title = String(prod.title || prod.name || slug);
 
-    if (resp.latestDocument?.blocks) {
-      console.log(pc.bold(`\n📋 Block Summary (${resp.latestDocument.blocks.length} blocks):`));
-      resp.latestDocument.blocks.forEach((b, i) => {
-        console.log(`  ${i + 1}. [${b.type}]`);
+    console.log(pc.cyan(`\n🔍 Product Details: ${pc.bold(title)}`));
+    console.log(`  • Slug:        ${prod.slug || slug}`);
+    if (prod.tagline) console.log(`  • Tagline:     ${pc.italic(String(prod.tagline))}`);
+    if (prod.websiteUrl) console.log(`  • Website:     ${pc.blue(String(prod.websiteUrl))}`);
+    if (typeof prod.trustScore === "number") console.log(`  • Trust Score: ${pc.green(`${prod.trustScore}/100`)}`);
+    if (prod.status) console.log(`  • Status:      ${String(prod.status)}`);
+    if (prod.createdAt) console.log(`  • Created:     ${String(prod.createdAt)}`);
+
+    const revision = dataObj.revision as Record<string, unknown> | undefined;
+    const revDoc = revision?.document as Record<string, unknown> | undefined;
+    const blocks = (revDoc?.blocks || (resp as Record<string, unknown>).latestDocument) as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(blocks) && blocks.length > 0) {
+      console.log(pc.bold(`\n📋 Block Summary (${blocks.length} blocks):`));
+      blocks.forEach((b, i: number) => {
+        console.log(`  ${i + 1}. [${String(b.type || "block")}] ${b.id ? `(id: ${String(b.id)})` : ""}`);
       });
     }
     console.log("");

@@ -12,6 +12,22 @@ export type NlbConfig = z.infer<typeof NlbConfigSchema>;
 export const DEFAULT_API_URL = "https://nextlevelbuilder.io";
 export const STAGING_API_URL = "https://staging.nextlevelbuilder.io";
 
+const ALLOWED_CREDENTIAL_HOSTS = new Set([
+  "nextlevelbuilder.io",
+  "www.nextlevelbuilder.io",
+  "staging.nextlevelbuilder.io",
+  "localhost",
+  "127.0.0.1"
+]);
+
+export function isAllowedCredentialOrigin(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    return ALLOWED_CREDENTIAL_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
 function getHomeConfigPath(): string {
   try {
     return join(homedir(), ".nlb", "config.json");
@@ -90,7 +106,8 @@ export function resolveConfig(flags: { apiKey?: string; apiUrl?: string; url?: s
   apiUrl: string;
   sources: { apiKeySource: string; apiUrlSource: string };
 } {
-  const merged = readMergedConfig();
+  const homeConfig = readConfigFile(getHomeConfigPath());
+  const localConfig = readConfigFile(getLocalConfigPath());
 
   // API URL resolution
   let apiUrl = DEFAULT_API_URL;
@@ -102,9 +119,12 @@ export function resolveConfig(flags: { apiKey?: string; apiUrl?: string; url?: s
   } else if (process.env.NLB_API_URL) {
     apiUrl = process.env.NLB_API_URL;
     apiUrlSource = "env_var (NLB_API_URL)";
-  } else if (merged.apiUrl) {
-    apiUrl = merged.apiUrl;
-    apiUrlSource = "config_file";
+  } else if (localConfig.apiUrl) {
+    apiUrl = localConfig.apiUrl;
+    apiUrlSource = "project_config (.nlbrc.json)";
+  } else if (homeConfig.apiUrl) {
+    apiUrl = homeConfig.apiUrl;
+    apiUrlSource = "home_config (~/.nlb/config.json)";
   }
 
   // Normalize API URL trailing slash
@@ -117,12 +137,26 @@ export function resolveConfig(flags: { apiKey?: string; apiUrl?: string; url?: s
   if (flags.apiKey) {
     apiKey = flags.apiKey;
     apiKeySource = "cli_flag";
+  } else if (localConfig.apiKey) {
+    apiKey = localConfig.apiKey;
+    apiKeySource = "project_config (.nlbrc.json)";
   } else if (process.env.NLB_API_KEY) {
     apiKey = process.env.NLB_API_KEY;
     apiKeySource = "env_var (NLB_API_KEY)";
-  } else if (merged.apiKey) {
-    apiKey = merged.apiKey;
-    apiKeySource = "config_file";
+  } else if (homeConfig.apiKey) {
+    apiKey = homeConfig.apiKey;
+    apiKeySource = "home_config (~/.nlb/config.json)";
+  }
+
+  // Security guard: Never forward home or env API key to untrusted project-config origin without CLI flag
+  if (
+    apiUrlSource.startsWith("project_config") &&
+    !isAllowedCredentialOrigin(apiUrl) &&
+    apiKeySource !== "cli_flag" &&
+    apiKeySource !== "project_config (.nlbrc.json)"
+  ) {
+    apiKey = undefined;
+    apiKeySource = "suppressed (untrusted_project_origin)";
   }
 
   return {

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { resolveConfig } from "../src/config.js";
 
 describe("CLI: Config Resolution", () => {
@@ -43,5 +45,20 @@ describe("CLI: Config Resolution", () => {
     expect(config.apiKey).toBe("nlb_live_test123");
     expect(config.apiUrl).toBe("https://staging.nextlevelbuilder.io");
     expect(config.sources.apiKeySource).toBe("env_var (NLB_API_KEY)");
+  });
+
+  it("should NOT forward env or home API key to untrusted project-config origin (credential isolation)", () => {
+    process.env.NLB_API_KEY = "nlb_live_secret_key_12345";
+    const localConfigPath = join(process.cwd(), ".nlbrc.json");
+    try {
+      writeFileSync(localConfigPath, JSON.stringify({ apiUrl: "https://evil-attacker.example.com" }));
+
+      const config = resolveConfig();
+      expect(config.apiUrl).toBe("https://evil-attacker.example.com");
+      expect(config.apiKey).toBeUndefined();
+      expect(config.sources.apiKeySource).toContain("suppressed");
+    } finally {
+      if (existsSync(localConfigPath)) unlinkSync(localConfigPath);
+    }
   });
 });

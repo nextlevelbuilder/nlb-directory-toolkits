@@ -44,8 +44,14 @@ describe("MCP: Server JSON-RPC 2.0 Engine", () => {
     expect(toolNames).toContain("validate_listing");
     expect(toolNames).toContain("submit_product");
     expect(toolNames).toContain("get_product");
-    expect(toolNames).toContain("search_products");
+    expect(toolNames).toContain("get_product_markdown");
+    expect(toolNames).toContain("list_products");
     expect(toolNames).toContain("get_leaderboard");
+    expect(toolNames).toContain("get_stats");
+    expect(toolNames).toContain("check_health");
+    expect(toolNames).toContain("cast_vote");
+    expect(toolNames).toContain("upload_media");
+    expect(toolNames).toContain("create_checkout");
     expect(toolNames).toContain("list_templates");
   });
 

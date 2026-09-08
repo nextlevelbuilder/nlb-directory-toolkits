@@ -1,69 +1,108 @@
 # Contracts Documentation (`@nextlevelbuilder/contracts`)
 
-`@nextlevelbuilder/contracts` defines the core data structures, Zod schemas, layout templates, canonical SHA-256 hasher, and API contracts for the Next Level Builders ecosystem.
+`@nextlevelbuilder/contracts` defines the core data structures, Zod schemas, layout templates, canonical SHA-256 hasher, and API wire contracts for the Next Level Builders ecosystem.
 
-## 16 Block Types
+## 16 Canonical Server Block Types
 
-Every block conforms to `BlockSchema = z.discriminatedUnion("type", [ ... ])`:
+Every block conforms to `BlockSchema = z.discriminatedUnion("type", [ ... ])`, requiring `id: string` and typed `props`:
 
-| Block Type | Primary Fields | Use Case |
+| Block Type | Primary `props` Fields | Description |
 |---|---|---|
-| `hero` | `title`, `subtitle`, `badge`, `primaryCta`, `secondaryCta`, `theme`, `alignment` | Main product hero section |
-| `carousel` | `items`, `autoplay`, `intervalMs`, `layout` | Feature/image slideshow |
-| `mediaGallery` | `items`, `columns`, `aspectRatio` | Multi-column screenshot/video gallery |
-| `quote` | `text`, `author`, `role`, `company`, `rating`, `verified` | Testimonial & social proof |
-| `grid` | `title`, `columns`, `items` (title, description, icon, badge) | Feature card grid |
-| `changelog` | `releases` (version, date, changes) | Release notes & version history |
-| `roadmap` | `stages` (planned, in_progress, completed) | Product roadmap |
-| `pricing` | `currency`, `tiers` (name, price, billingPeriod, features, isPopular) | Transparent pricing tables |
-| `faq` | `items` (question, answer, category) | Frequently asked questions |
-| `techStack` | `categories` (technologies: name, icon, version) | Tech stack badges |
-| `liveDemo` | `url`, `sandboxType`, `heightPx`, `instructions` | Embedded interactive sandboxes |
-| `cta` | `title`, `buttonText`, `buttonUrl`, `style` | Call-to-action banner |
-| `founder` | `founders` (name, role, bio, socialLinks) | Founder profiles |
-| `verification` | `proofType`, `verifiedAt`, `status`, `details` | Provenance verification |
-| `milestones` | `milestones` (date, title, description, metrics) | Key project milestones |
-| `caseStudy` | `clientName`, `problem`, `solution`, `results`, `testimonial` | In-depth case study |
+| `hero` | `headline`, `subheadline`, `primaryCtaText`, `primaryCtaUrl`, `badge` | Main product hero section |
+| `carousel` | `items: Array<{ title, imageUrl, description? }>` | Feature/product showcase carousel (1-10 slides) |
+| `mediaGallery` | `images: Array<{ url, caption?, aspectRatio }>` | Image gallery (1-8 images) |
+| `quote` | `quote`, `author`, `title`, `avatarUrl` | Testimonial & social proof |
+| `grid` | `columns` (1-3), `items: Array<{ title, description, icon? }>` | Feature card grid (1-12 items) |
+| `changelog` | `entries: Array<{ version, date, changes: string[] }>` | Release notes & version history (1-10 entries) |
+| `roadmap` | `milestones: Array<{ quarter, title, status }>` | Product roadmap (1-8 items) |
+| `pricing` | `tiers: Array<{ name, price, period?, features, ctaText, ctaUrl?, isPopular }>` | Transparent pricing tables (1-4 tiers) |
+| `faq` | `items: Array<{ question, answer }>` | Frequently asked questions (1-20 items) |
+| `techStack` | `technologies: Array<{ name, category, icon? }>` | Tech stack badges (1-16 items) |
+| `liveDemo` | `embedUrl`, `sandboxTokens`, `height` | Embedded interactive sandboxes |
+| `cta` | `title`, `subtitle`, `buttonText`, `buttonUrl` | Call-to-action banner |
+| `founder` | `name`, `bio`, `avatarUrl`, `xHandle`, `linkedinUrl` | Founder profile |
+| `verification` | `metricType`, `verifiedValue`, `verificationScope`, `verifiedAt`, `evidenceStandard` | Cryptographic & platform verification |
+| `milestones` | `items: Array<{ date, title, description? }>` | Key project milestones (1-10 items) |
+| `caseStudy` | `customerName`, `problem`, `solution`, `outcome`, `metrics?` | In-depth customer case study |
+
+---
+
+## Document Schemas
+
+### 1. `ProductDocumentSchema` (Canonical Server Wire Document)
+Strictly validated on the server for all revisions:
+```typescript
+{
+  schemaVersion: 1,
+  title: string,           // 1-100 chars
+  tagline: string,         // 1-200 chars
+  description: string,     // 10-2000 chars
+  websiteUrl: string,      // Valid HTTP/HTTPS URL
+  logoUrl?: string,        // Valid HTTP/HTTPS URL
+  categorySlugs: string[], // 1-5 category identifiers
+  tagSlugs: string[],      // 0-10 tag identifiers
+  blocks: Block[]          // Array of 16-block compliant objects
+}
+```
+
+### 2. `AuthorProductDocumentSchema` & `toServerDocument`
+Allows author-friendly fields (`name` instead of `title`, single `category` or array, `tags`) and automatically converts them to the canonical server format:
+```typescript
+import { toServerDocument, computeContentHashSync } from "@nextlevelbuilder/contracts";
+
+const authorDoc = {
+  name: "My CLI",
+  category: "Developer Tools",
+  tags: ["ai", "agents"],
+  tagline: "High-impact tool",
+  description: "Detailed description of the tool.",
+  websiteUrl: "https://example.com",
+  blocks: [...]
+};
+
+const serverDoc = toServerDocument(authorDoc);
+const hash = computeContentHashSync(serverDoc);
+```
 
 ---
 
 ## 5 Layout Templates
 
-Pre-configured block arrangements exported by `TEMPLATES`:
-1. **`saas-launch`**: Hero -> MediaGallery -> Grid -> Pricing -> FAQ -> Founder -> CTA
-2. **`ai-agent-tool`**: Hero -> LiveDemo -> TechStack -> Carousel -> Changelog -> Verification -> CTA
-3. **`developer-cli`**: Hero -> TechStack -> Grid -> Roadmap -> Changelog -> Verification -> CTA
-4. **`curated-community`**: Hero -> Grid -> Quote -> Milestones -> FAQ -> Founder -> CTA
-5. **`minimalist-showcase`**: Hero -> MediaGallery -> CaseStudy -> Quote -> CTA
+Exported via `LAYOUT_TEMPLATES`:
+1. **`saas-launch`**: Hero -> MediaGallery -> Grid -> TechStack -> FAQ -> CTA
+2. **`ai-agent`**: Hero -> MediaGallery -> Grid -> Milestones -> CTA
+3. **`dev-tool`**: Hero -> TechStack -> Grid -> Changelog -> CTA
+4. **`community-curated`**: Hero -> Founder -> Grid -> CTA
+5. **`minimalist`**: Hero -> MediaGallery -> CTA
 
 Helper functions:
 ```typescript
 import { listTemplates, getTemplate, createDocumentFromTemplate } from "@nextlevelbuilder/contracts";
 
 const templates = listTemplates();
-const template = getTemplate("developer-cli");
-const doc = createDocumentFromTemplate("developer-cli", {
-  name: "My CLI",
-  slug: "my-cli",
+const template = getTemplate("dev-tool"); // Also accepts legacy aliases like "developer-cli"
+const doc = createDocumentFromTemplate("dev-tool", {
+  title: "My CLI",
   tagline: "Blazing fast",
-  description: "Description",
+  description: "Detailed description.",
   websiteUrl: "https://example.com"
 });
 ```
 
 ---
 
-## Canonical SHA-256 Hasher
+## API Wire Schemas
 
-```typescript
-import { canonicalizeJson, computeContentHash, verifyContentHash } from "@nextlevelbuilder/contracts";
-
-// Canonicalize JSON string
-const canonical = canonicalizeJson({ b: 2, a: 1 }); // '{"a":1,"b":2}'
-
-// Asynchronous computation (Web Crypto / Node / Workers)
-const hash = await computeContentHash(doc);
-
-// Verify hash
-const isValid = await verifyContentHash(doc, hash);
-```
+Exported from `@nextlevelbuilder/contracts`:
+- `ProductCreateInputSchema` & `ProductCreateResponseSchema`
+- `ProductRevisionInputSchema` & `ProductRevisionResponseSchema`
+- `ProductSubmitInputSchema`, `ProductSubmitSuccessSchema` & `ProductSubmitPaymentRequiredSchema` (HTTP 402)
+- `ProductListQuerySchema` & `ProductListResponseSchema` (with `limit` & `offset` pagination)
+- `ProductDetailResponseSchema`
+- `RankingsQuerySchema` & `RankingsResponseSchema` (`data.ranks`)
+- `StatsResponseSchema`
+- `HealthResponseSchema`
+- `VoteInputSchema` & `VoteResponseSchema`
+- `ApiKeyItemSchema`, `ApiKeyListResponseSchema`, `ApiKeyCreateInputSchema`, `ApiKeyCreateResponseSchema`, `ApiKeyRevokeResponseSchema`
+- `MediaUploadResponseSchema`
+- `CheckoutInputSchema` & `CheckoutResponseSchema`

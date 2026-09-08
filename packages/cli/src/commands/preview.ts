@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { ProductDocumentSchema, computeContentHash } from "@nextlevelbuilder/contracts";
+import { toServerDocumentSafe, computeContentHashSync } from "@nextlevelbuilder/contracts";
 import { renderProductPreview } from "../preview/ascii.js";
 import pc from "picocolors";
 
@@ -26,31 +26,31 @@ export async function previewCommand(filePath: string, options: PreviewOptions =
     return;
   }
 
-  const result = ProductDocumentSchema.safeParse(parsed);
+  const result = toServerDocumentSafe(parsed);
   if (!result.success) {
     console.error(pc.red(`✖ Document validation failed before preview:`));
-    result.error.errors.forEach((e) => {
-      console.error(pc.red(`  • ${e.path.join(".")}: ${e.message}`));
+    result.errors.forEach((e) => {
+      console.error(pc.red(`  • ${e.path}: ${e.message}`));
     });
     process.exitCode = 1;
     return;
   }
 
-  const contentHash = await computeContentHash(result.data);
-
+  const doc = result.document;
+  const contentHash = computeContentHashSync(doc);
   if (options.json) {
     console.log(
       JSON.stringify(
         {
           preview: true,
           contentHash,
-          document: result.data
+          document: doc
         },
         null,
         2
       )
     );
   } else {
-    console.log(renderProductPreview(result.data, contentHash));
+    console.log(renderProductPreview(doc, contentHash));
   }
 }

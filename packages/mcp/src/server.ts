@@ -18,6 +18,15 @@ export interface JsonRpcResponse {
   };
 }
 
+const MUTATING_TOOLS: Record<string, true> = {
+  submit_product: true,
+  cast_vote: true,
+  upload_media: true,
+  create_checkout: true,
+  create_api_key: true,
+  revoke_api_key: true
+};
+
 export class McpServer {
   private readonly tools: Map<string, McpToolDefinition> = new Map();
 
@@ -35,7 +44,10 @@ export class McpServer {
     return Array.from(this.tools.values());
   }
 
-  public async handleMessage(rawMessage: unknown, context?: { workerAuth?: boolean }): Promise<JsonRpcResponse | null> {
+  public async handleMessage(
+    rawMessage: unknown,
+    context?: { workerAuth?: boolean; env?: { NLB_API_KEY?: string; NLB_API_URL?: string } }
+  ): Promise<JsonRpcResponse | null> {
     if (typeof rawMessage !== "object" || rawMessage === null) {
       return {
         jsonrpc: "2.0",
@@ -123,6 +135,18 @@ export class McpServer {
                 jsonrpc: "2.0",
                 id,
                 error: { code: -32601, message: `Tool not found: ${toolName}` }
+              };
+        }
+        if (context && context.workerAuth !== true && MUTATING_TOOLS[toolName]) {
+          return isNotification
+            ? null
+            : {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: -32001,
+                  message: `Unauthorized: Tool '${toolName}' performs remote mutation and requires a valid Worker authorization token.`
+                }
               };
         }
 
