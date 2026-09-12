@@ -119,7 +119,7 @@ Exported from `@nextlevelbuilder/contracts`:
 
 ### Product traffic
 
-The traffic endpoint requires an API key authorized for the product's organization. Optional `from` and `to` must be UTC ISO timestamps; `to` defaults to now and `from` to 30 days before `to`. The start must precede the end, the end cannot be in the future, and the range cannot exceed 90 days.
+The traffic endpoint requires an API key or signed-in account authorized for the product's organization. Hosted MCP uses OAuth `mcp:read` with signed delegation; organization-scoped API keys must match the product organization. Optional `from` and `to` must be UTC ISO timestamps; `to` defaults to now and `from` to 30 days before `to`. The start must precede the end, the end cannot be in the future, and the range cannot exceed 90 days.
 
 ```typescript
 {
