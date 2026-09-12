@@ -1,9 +1,11 @@
-import { McpServer } from "../server.js";
+import { McpServer, SERVER_VERSION, SUPPORTED_PROTOCOL_VERSIONS } from "../server.js";
+import { authorizeOAuthMessage, oauthMetadata, type OAuthEnv } from "../oauth.js";
 
-export interface WorkerEnv {
+export interface WorkerEnv extends OAuthEnv {
   NLB_API_KEY?: string;
   NLB_API_URL?: string;
   WORKER_AUTH_TOKEN?: string;
+  NLB_ALLOWED_ORIGINS?: string;
 }
 
 const serverInstance = new McpServer();
@@ -47,11 +49,29 @@ export async function handleWorkerFetch(request: Request, env?: WorkerEnv): Prom
   const corsHeaders: Record<string, string> = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Session-Id",
+    "Access-Control-Expose-Headers": "WWW-Authenticate"
   };
+
+  const origin = request.headers.get("Origin");
+  if (origin) {
+    const allowedOrigins = [url.origin, ...(env?.NLB_ALLOWED_ORIGINS?.split(",").map((value) => value.trim()) ?? [])];
+    if (!allowedOrigins.includes(origin)) {
+      return new Response("Forbidden origin", { status: 403 });
+    }
+    corsHeaders["Access-Control-Allow-Origin"] = origin;
+    corsHeaders.Vary = "Origin";
+  }
 
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  if (env?.NLB_OAUTH_ENABLED === "true" && request.method === "GET" &&
+      ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"].includes(url.pathname)) {
+    const response = oauthMetadata(env);
+    Object.entries(corsHeaders).forEach(([key, value]) => response.headers.set(key, value));
+    return response;
   }
 
   // Health check
@@ -60,7 +80,7 @@ export async function handleWorkerFetch(request: Request, env?: WorkerEnv): Prom
       JSON.stringify({
         status: "ok",
         service: "nlb-directory-mcp",
-        version: "0.1.0",
+        version: SERVER_VERSION,
         toolsCount: serverInstance.listTools().length
       }),
       {
@@ -71,6 +91,14 @@ export async function handleWorkerFetch(request: Request, env?: WorkerEnv): Prom
         }
       }
     );
+  }
+
+  // This endpoint is stateless: POST returns JSON, and no GET stream or session is needed.
+  if (url.pathname === "/mcp" && request.method !== "POST") {
+    return new Response("Method Not Allowed", {
+      status: 405,
+      headers: { ...corsHeaders, Allow: "POST, OPTIONS" }
+    });
   }
 
   // Optional worker authentication check when WORKER_AUTH_TOKEN is configured
@@ -135,10 +163,15 @@ export async function handleWorkerFetch(request: Request, env?: WorkerEnv): Prom
     try {
       const rawJson = await request.json();
       const listener = sseSessions.get(sessionId);
-      const response = await serverInstance.handleMessage(rawJson, {
+      const context = await authorizeOAuthMessage(request, rawJson, env || {}, {
         workerAuth: isWorkerAuthenticated,
         env: { NLB_API_KEY: env?.NLB_API_KEY, NLB_API_URL: env?.NLB_API_URL }
       });
+      if (context instanceof Response) {
+        Object.entries(corsHeaders).forEach(([key, value]) => context.headers.set(key, value));
+        return context;
+      }
+      const response = await serverInstance.handleMessage(rawJson, context);
 
       if (response !== null && listener) {
         listener("message", response);
@@ -162,15 +195,27 @@ export async function handleWorkerFetch(request: Request, env?: WorkerEnv): Prom
 
   // Direct JSON-RPC POST (/ or /mcp)
   if (request.method === "POST" && (url.pathname === "/" || url.pathname === "/mcp")) {
+    const protocolVersion = request.headers.get("MCP-Protocol-Version");
+    if (protocolVersion && !SUPPORTED_PROTOCOL_VERSIONS.some((version) => version === protocolVersion)) {
+      return new Response("Unsupported MCP protocol version", { status: 400, headers: corsHeaders });
+    }
+    if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+      return new Response("Content-Type must be application/json", { status: 415, headers: corsHeaders });
+    }
     try {
       const rawJson = await request.json();
-      const response = await serverInstance.handleMessage(rawJson, {
+      const context = await authorizeOAuthMessage(request, rawJson, env || {}, {
         workerAuth: isWorkerAuthenticated,
         env: { NLB_API_KEY: env?.NLB_API_KEY, NLB_API_URL: env?.NLB_API_URL }
       });
+      if (context instanceof Response) {
+        Object.entries(corsHeaders).forEach(([key, value]) => context.headers.set(key, value));
+        return context;
+      }
+      const response = await serverInstance.handleMessage(rawJson, context);
 
       if (response === null) {
-        return new Response(null, { status: 204, headers: corsHeaders });
+        return new Response(null, { status: 202, headers: corsHeaders });
       }
 
       return new Response(JSON.stringify(response), {

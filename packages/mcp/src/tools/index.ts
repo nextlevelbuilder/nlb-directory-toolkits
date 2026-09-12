@@ -1,3 +1,4 @@
+import type { ToolContext } from "../tool-context.js";
 import {
   toServerDocumentSafe,
   computeContentHashSync,
@@ -20,7 +21,7 @@ export interface McpToolDefinition {
   };
   handler: (
     args: Record<string, unknown>,
-    context?: { workerAuth?: boolean; env?: { NLB_API_KEY?: string; NLB_API_URL?: string } }
+    context?: ToolContext
   ) => Promise<unknown>;
 }
 
@@ -82,7 +83,7 @@ const ALLOWED_MIME_TYPES: Record<string, true> = {
 };
 export function resolveToolEnv(
   args: Record<string, unknown>,
-  context?: { workerAuth?: boolean; env?: { NLB_API_KEY?: string; NLB_API_URL?: string } }
+  context?: ToolContext
 ): { apiUrl: string; apiKey?: string } {
   const rawUrl =
     typeof args.api_url === "string" && args.api_url.trim()
@@ -94,11 +95,17 @@ export function resolveToolEnv(
   const apiKey =
     typeof args.api_key === "string" && args.api_key.trim()
       ? args.api_key.trim()
-      : context?.env?.NLB_API_KEY || (typeof process !== "undefined" ? process.env?.NLB_API_KEY : undefined);
+      : (context?.oauth ? undefined : context?.env?.NLB_API_KEY || (typeof process !== "undefined" ? process.env?.NLB_API_KEY : undefined));
 
   return { apiUrl, apiKey };
 }
 
+
+function resolveSessionCookie(args: Record<string, unknown>, context?: ToolContext): string | undefined {
+  if (context?.oauth) return undefined;
+  if (typeof args.session_cookie === "string") return args.session_cookie;
+  return typeof process !== "undefined" ? process.env.NLB_SESSION_COOKIE : undefined;
+}
 
 export const TOOLS: McpToolDefinition[] = [
   {
@@ -254,7 +261,7 @@ export const TOOLS: McpToolDefinition[] = [
       const timeoutSignal = AbortSignal.timeout(15000);
 
       try {
-        const createResp = await fetch(`${apiUrl}/api/v1/products`, {
+        const createResp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/products`, {
           method: "POST",
           headers,
           signal: AbortSignal.timeout(15000),
@@ -280,7 +287,7 @@ export const TOOLS: McpToolDefinition[] = [
         }
       }
       // Step 2: Upload Revision
-      const revResp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/revisions`, {
+      const revResp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/revisions`, {
         method: "POST",
         headers,
         signal: AbortSignal.timeout(15000),
@@ -306,7 +313,7 @@ export const TOOLS: McpToolDefinition[] = [
       }
 
       // Step 3: Submit to Moderation Queue
-      const submitResp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/submit`, {
+      const submitResp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/submit`, {
         method: "POST",
         headers,
         signal: AbortSignal.timeout(15000),
@@ -381,16 +388,16 @@ export const TOOLS: McpToolDefinition[] = [
       },
       required: ["slug"]
     },
-    handler: async (args) => {
+    handler: async (args, context) => {
       if (!args.slug || typeof args.slug !== "string") {
         throw new Error("Missing required 'slug' parameter.");
       }
       const slug = args.slug.trim();
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const { apiUrl } = resolveToolEnv(args, context);
       const format = args.format === "markdown" ? "markdown" : "json";
 
       if (format === "markdown") {
-        const resp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/markdown`, {
+        const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/markdown`, {
           headers: { Accept: "text/markdown, text/plain" },
           signal: AbortSignal.timeout(15000)
         });
@@ -401,7 +408,7 @@ export const TOOLS: McpToolDefinition[] = [
         return { slug, markdown: text };
       }
 
-      const resp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}`, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(15000)
       });
@@ -432,14 +439,14 @@ export const TOOLS: McpToolDefinition[] = [
       },
       required: ["slug"]
     },
-    handler: async (args) => {
+    handler: async (args, context) => {
       if (!args.slug || typeof args.slug !== "string") {
         throw new Error("Missing required 'slug' parameter.");
       }
       const slug = args.slug.trim();
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const { apiUrl } = resolveToolEnv(args, context);
 
-      const resp = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/markdown`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/products/${encodeURIComponent(slug)}/markdown`, {
         headers: { Accept: "text/markdown, text/plain" },
         signal: AbortSignal.timeout(15000)
       });
@@ -474,13 +481,13 @@ export const TOOLS: McpToolDefinition[] = [
         }
       }
     },
-    handler: async (args) => {
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+    handler: async (args, context) => {
+      const { apiUrl } = resolveToolEnv(args, context);
       const params = new URLSearchParams();
       if (typeof args.limit === "number") params.set("limit", String(Math.min(50, Math.max(1, args.limit))));
       if (typeof args.offset === "number") params.set("offset", String(Math.max(0, args.offset)));
 
-      const resp = await fetch(`${apiUrl}/api/v1/products?${params.toString()}`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/products?${params.toString()}`, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(15000)
       });
@@ -511,11 +518,11 @@ export const TOOLS: McpToolDefinition[] = [
         }
       }
     },
-    handler: async (args) => {
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+    handler: async (args, context) => {
+      const { apiUrl } = resolveToolEnv(args, context);
       const windowType = args.window === "weekly" ? "weekly" : args.window === "monthly" ? "monthly" : "daily";
 
-      const resp = await fetch(`${apiUrl}/api/v1/rankings?window=${windowType}`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/rankings?window=${windowType}`, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(15000)
       });
@@ -541,10 +548,10 @@ export const TOOLS: McpToolDefinition[] = [
         }
       }
     },
-    handler: async (args) => {
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+    handler: async (args, context) => {
+      const { apiUrl } = resolveToolEnv(args, context);
 
-      const resp = await fetch(`${apiUrl}/api/v1/stats`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/stats`, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(15000)
       });
@@ -570,10 +577,10 @@ export const TOOLS: McpToolDefinition[] = [
         }
       }
     },
-    handler: async (args) => {
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+    handler: async (args, context) => {
+      const { apiUrl } = resolveToolEnv(args, context);
 
-      const resp = await fetch(`${apiUrl}/api/health`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/health`, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(10000)
       });
@@ -596,7 +603,7 @@ export const TOOLS: McpToolDefinition[] = [
   // 9. cast_vote
   {
     name: "cast_vote",
-    description: "Cast an organic community vote for a product. Note: Organic voting requires a verified user session cookie to prevent bot voting.",
+    description: "Cast a community vote as an authenticated NLB user through OAuth or a session cookie. Turnstile verification may also be required.",
     inputSchema: {
       type: "object",
       properties: {
@@ -619,23 +626,23 @@ export const TOOLS: McpToolDefinition[] = [
       },
       required: ["product_id"]
     },
-    handler: async (args) => {
+    handler: async (args, context) => {
       if (!args.product_id || typeof args.product_id !== "string") {
         throw new Error("Missing required 'product_id' parameter.");
       }
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const { apiUrl } = resolveToolEnv(args, context);
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Accept: "application/json"
       };
 
-      const cookie = typeof args.session_cookie === "string" ? args.session_cookie : process.env.NLB_SESSION_COOKIE;
+      const cookie = resolveSessionCookie(args, context);
       if (cookie) {
         headers["Cookie"] = cookie;
       }
 
-      const resp = await fetch(`${apiUrl}/api/v1/votes`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/votes`, {
         method: "POST",
         headers,
         signal: AbortSignal.timeout(15000),
@@ -655,7 +662,7 @@ export const TOOLS: McpToolDefinition[] = [
 
       if (!resp.ok) {
         if (resp.status === 401) {
-          throw new Error("Unauthorized (HTTP 401): Organic voting requires a verified user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
+          throw new Error(context?.oauth ? "The NLB API rejected this OAuth identity. Reconnect or ask the server operator to check delegation configuration." : "Unauthorized (HTTP 401): Organic voting requires a verified user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
         }
         if (resp.status === 409 || text.includes("already voted")) {
           throw new Error("Conflict (HTTP 409): Already voted for this product today.");
@@ -767,7 +774,7 @@ export const TOOLS: McpToolDefinition[] = [
         headers["x-api-key"] = apiKey;
       }
 
-      const resp = await fetch(`${apiUrl}/api/v1/media/upload`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/media/upload`, {
         method: "POST",
         headers,
         body: formData,
@@ -809,14 +816,14 @@ export const TOOLS: McpToolDefinition[] = [
       },
       required: ["product_id"]
     },
-    handler: async (args) => {
+    handler: async (args, context) => {
       if (!args.product_id || typeof args.product_id !== "string") {
         throw new Error("Missing required 'product_id' parameter.");
       }
 
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const { apiUrl } = resolveToolEnv(args, context);
 
-      const resp = await fetch(`${apiUrl}/api/checkout`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/checkout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -887,7 +894,7 @@ export const TOOLS: McpToolDefinition[] = [
   // 13. list_api_keys
   {
     name: "list_api_keys",
-    description: "List active developer API keys for the current account. Note: Requires session cookie.",
+    description: "List active developer API keys for the current account. Requires OAuth mcp:keys permission or a user session cookie.",
     inputSchema: {
       type: "object",
       properties: {
@@ -901,17 +908,17 @@ export const TOOLS: McpToolDefinition[] = [
         }
       }
     },
-    handler: async (args) => {
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+    handler: async (args, context) => {
+      const { apiUrl } = resolveToolEnv(args, context);
       const headers: Record<string, string> = {
         Accept: "application/json"
       };
-      const cookie = typeof args.session_cookie === "string" ? args.session_cookie : process.env.NLB_SESSION_COOKIE;
+      const cookie = resolveSessionCookie(args, context);
       if (cookie) {
         headers["Cookie"] = cookie;
       }
 
-      const resp = await fetch(`${apiUrl}/api/v1/api-keys`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/api-keys`, {
         method: "GET",
         headers,
         signal: AbortSignal.timeout(15000)
@@ -920,7 +927,7 @@ export const TOOLS: McpToolDefinition[] = [
       if (!resp.ok) {
         const errText = await resp.text().catch(() => "");
         if (resp.status === 401) {
-          throw new Error("Unauthorized (HTTP 401): API key management requires a signed-in user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
+          throw new Error(context?.oauth ? "The NLB API rejected this OAuth identity. Reconnect or ask the server operator to check delegation configuration." : "Unauthorized (HTTP 401): API key management requires a signed-in user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
         }
         throw new Error(`Failed to list API keys (HTTP ${resp.status}): ${errText || resp.statusText}`);
       }
@@ -932,7 +939,7 @@ export const TOOLS: McpToolDefinition[] = [
   // 14. create_api_key
   {
     name: "create_api_key",
-    description: "Create a new developer API key. Note: Requires user session cookie. Raw secret key is returned only once.",
+    description: "Create a new developer API key. Requires OAuth mcp:keys permission or a user session cookie. The raw key is returned once and can outlive the OAuth grant.",
     inputSchema: {
       type: "object",
       properties: {
@@ -959,21 +966,21 @@ export const TOOLS: McpToolDefinition[] = [
       },
       required: ["name"]
     },
-    handler: async (args) => {
+    handler: async (args, context) => {
       if (!args.name || typeof args.name !== "string") {
         throw new Error("Missing required 'name' parameter.");
       }
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const { apiUrl } = resolveToolEnv(args, context);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Accept: "application/json"
       };
-      const cookie = typeof args.session_cookie === "string" ? args.session_cookie : process.env.NLB_SESSION_COOKIE;
+      const cookie = resolveSessionCookie(args, context);
       if (cookie) {
         headers["Cookie"] = cookie;
       }
 
-      const resp = await fetch(`${apiUrl}/api/v1/api-keys`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/api-keys`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -987,7 +994,7 @@ export const TOOLS: McpToolDefinition[] = [
       if (!resp.ok) {
         const errText = await resp.text().catch(() => "");
         if (resp.status === 401) {
-          throw new Error("Unauthorized (HTTP 401): API key creation requires a signed-in user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
+          throw new Error(context?.oauth ? "The NLB API rejected this OAuth identity. Reconnect or ask the server operator to check delegation configuration." : "Unauthorized (HTTP 401): API key creation requires a signed-in user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
         }
         throw new Error(`Failed to create API key (HTTP ${resp.status}): ${errText || resp.statusText}`);
       }
@@ -999,7 +1006,7 @@ export const TOOLS: McpToolDefinition[] = [
   // 15. revoke_api_key
   {
     name: "revoke_api_key",
-    description: "Revoke an existing developer API key by ID. Note: Requires user session cookie.",
+    description: "Revoke an existing developer API key by ID. Requires OAuth mcp:keys permission or a user session cookie.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1018,20 +1025,20 @@ export const TOOLS: McpToolDefinition[] = [
       },
       required: ["id"]
     },
-    handler: async (args) => {
+    handler: async (args, context) => {
       if (!args.id || typeof args.id !== "string") {
         throw new Error("Missing required 'id' parameter.");
       }
-      const apiUrl = validateAllowedApiUrl(typeof args.api_url === "string" ? args.api_url : undefined);
+      const { apiUrl } = resolveToolEnv(args, context);
       const headers: Record<string, string> = {
         Accept: "application/json"
       };
-      const cookie = typeof args.session_cookie === "string" ? args.session_cookie : process.env.NLB_SESSION_COOKIE;
+      const cookie = resolveSessionCookie(args, context);
       if (cookie) {
         headers["Cookie"] = cookie;
       }
 
-      const resp = await fetch(`${apiUrl}/api/v1/api-keys/${encodeURIComponent(args.id)}`, {
+      const resp = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/api-keys/${encodeURIComponent(args.id)}`, {
         method: "DELETE",
         headers,
         signal: AbortSignal.timeout(15000)
@@ -1040,7 +1047,7 @@ export const TOOLS: McpToolDefinition[] = [
       if (!resp.ok) {
         const errText = await resp.text().catch(() => "");
         if (resp.status === 401) {
-          throw new Error("Unauthorized (HTTP 401): API key revocation requires a signed-in user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
+          throw new Error(context?.oauth ? "The NLB API rejected this OAuth identity. Reconnect or ask the server operator to check delegation configuration." : "Unauthorized (HTTP 401): API key revocation requires a signed-in user session cookie. Supply 'session_cookie' or set NLB_SESSION_COOKIE.");
         }
         throw new Error(`Failed to revoke API key (HTTP ${resp.status}): ${errText || resp.statusText}`);
       }

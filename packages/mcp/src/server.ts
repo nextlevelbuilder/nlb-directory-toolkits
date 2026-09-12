@@ -1,4 +1,8 @@
 import { TOOLS, McpToolDefinition } from "./tools/index.js";
+import { requiredToolScope, type ToolContext } from "./tool-context.js";
+
+export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2024-11-05"] as const;
+export const SERVER_VERSION = "0.2.0";
 
 export interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -46,7 +50,7 @@ export class McpServer {
 
   public async handleMessage(
     rawMessage: unknown,
-    context?: { workerAuth?: boolean; env?: { NLB_API_KEY?: string; NLB_API_URL?: string } }
+    context?: ToolContext
   ): Promise<JsonRpcResponse | null> {
     if (typeof rawMessage !== "object" || rawMessage === null) {
       return {
@@ -79,11 +83,14 @@ export class McpServer {
 
     switch (req.method) {
       case "initialize": {
+        const requestedVersion = req.params?.protocolVersion;
+        const protocolVersion = SUPPORTED_PROTOCOL_VERSIONS.find((version) => version === requestedVersion)
+          ?? SUPPORTED_PROTOCOL_VERSIONS[0];
         const result = {
-          protocolVersion: "2024-11-05",
+          protocolVersion,
           serverInfo: {
             name: "nlb-directory-mcp",
-            version: "0.1.0"
+            version: SERVER_VERSION
           },
           capabilities: {
             tools: {
@@ -137,7 +144,10 @@ export class McpServer {
                 error: { code: -32601, message: `Tool not found: ${toolName}` }
               };
         }
-        if (context && context.workerAuth !== true && MUTATING_TOOLS[toolName]) {
+        if (context?.oauth && !context.oauth.scopes.includes(requiredToolScope(toolName))) {
+          return isNotification ? null : { jsonrpc: "2.0", id, error: { code: -32001, message: "Insufficient OAuth scope" } };
+        }
+        if (context && !context.oauth && context.workerAuth !== true && MUTATING_TOOLS[toolName]) {
           return isNotification
             ? null
             : {
@@ -159,6 +169,12 @@ export class McpServer {
         }
 
         try {
+          if (context?.oauth) {
+            if (toolArgs.api_key !== undefined || toolArgs.session_cookie !== undefined ||
+                (toolArgs.api_url !== undefined && toolArgs.api_url !== context.env?.NLB_API_URL)) {
+              throw new Error("OAuth calls cannot override API URL or user credentials");
+            }
+          }
           const output = await tool.handler(toolArgs, context);
           return isNotification
             ? null
