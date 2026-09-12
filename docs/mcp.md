@@ -63,6 +63,8 @@ The server negotiates protocol `2025-06-18` and retains `2024-11-05` for legacy 
 
 #### Deploy from this repository
 
+The [Deploy MCP workflow](../.github/workflows/deploy-mcp.yml) deploys production after the main-branch CI succeeds. It also supports manual dispatch on `main`, running the same build, test and type checks before deployment. Repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` authorize deployment. Existing Worker secrets, including OAuth delegation credentials, remain managed in Cloudflare.
+
 Requires Node.js 22+ and pnpm. Run from the repository root:
 
 ```bash
@@ -78,7 +80,7 @@ For local development, run `pnpm --filter @nextlevelbuilder/mcp dev:worker` (def
 
 #### Authentication and browser access
 
-Public directory reads are available without authentication. Remote mutations (`submit_product`, `cast_vote`, `upload_media`, `create_checkout`, `create_api_key`, `revoke_api_key`) require an OAuth access token with the appropriate scope or `Authorization: Bearer <WORKER_AUTH_TOKEN>`. For legacy static-token clients, set a strong token as a Cloudflare secret to enable authorized writes:
+Public directory reads are available without authentication. Private traffic reads (`get_product_traffic`) require OAuth `mcp:read` or a valid static Worker token plus an upstream API key. Remote mutations (`submit_product`, `cast_vote`, `upload_media`, `create_checkout`, `create_api_key`, `revoke_api_key`) require an OAuth access token with the appropriate scope or `Authorization: Bearer <WORKER_AUTH_TOKEN>`. For legacy static-token clients, set a strong token as a Cloudflare secret to enable authorized writes:
 
 ```bash
 pnpm --filter @nextlevelbuilder/mcp exec wrangler secret put WORKER_AUTH_TOKEN
@@ -113,7 +115,7 @@ When enabled, clients discover the web authorization server through `/.well-know
 
 | Scope | Permission |
 | --- | --- |
-| `mcp:read` | Read directory data and validate documents |
+| `mcp:read` | Read directory data, query authorized product traffic and validate documents |
 | `mcp:write` | Submit products, upload media, vote, create checkout links |
 | `mcp:keys` | List, create and revoke the user's API keys; newly created keys can outlive this OAuth grant |
 
@@ -205,7 +207,7 @@ Generates a Polar checkout session URL for purchasing directory publishing slots
 - **Returns**: `{ url: string }`.
 
 ### 12. `list_templates`
-Returns layout templates (SaaS Launch, AI Agent, Dev Tool, Community Curated, Minimalist) with 16-block compliant blueprints.
+Returns layout templates (SaaS Launch, AI Agent, Dev Tool, Community Curated, Minimalist) with supported block blueprints.
 - **Parameters**: `template_name` (string, optional).
 - **Returns**: List of templates or single detailed template blueprint.
 
@@ -223,3 +225,25 @@ Creates a new developer API key. The raw secret key is returned only once.
 Revokes an existing developer API key by ID.
 - **Parameters**: `id` (string, required), `session_cookie` (string, optional), `api_url` (string, optional).
 - **Returns**: `{ success: boolean, message: string }`. Requires OAuth `mcp:keys` or a user session cookie.
+
+### 16. `get_product_traffic`
+
+Queries organization-authorized traffic for an NLB-hosted product page.
+- **Parameters**: `slug` (required), `from` and `to` (optional UTC ISO timestamps), `api_key` and `api_url` (optional).
+- **Defaults**: `to` is now; `from` is 30 days before `to`. Increasing ranges up to 90 days are accepted; the end cannot be in the future.
+- **Authentication**: OAuth callers need `mcp:read` and membership in the product organization (or admin access). The Worker signs a request-bound delegation assertion for the web API; it never forwards OAuth tokens or shared API keys. Stdio callers reuse `NLB_API_KEY`. Legacy Worker calls additionally require `Authorization: Bearer <WORKER_AUTH_TOKEN>`. Organization-scoped API keys must match the product organization.
+- **Returns**: The [traffic response](contracts.md#product-traffic), including source, timestamps, totals, daily series, referrers, countries, devices, and active visitors. Unavailable data returns an MCP tool error.
+- **Visitors**: Counts represent daily sessions. Identifiers reset each UTC day, so a returning session on the next day counts again; range totals are not unique people across the period.
+
+```json
+{
+  "name": "get_product_traffic",
+  "arguments": {
+    "slug": "my-product",
+    "from": "2026-08-01T00:00:00Z",
+    "to": "2026-08-31T00:00:00Z"
+  }
+}
+```
+
+To add a public Analytics block, include `{ "id": "traffic-1", "type": "analytics", "props": { "title": "Traffic", "period": "30d" } }` in the product document's `blocks` array, validate with `validate_listing`, and submit with `submit_product`. Periods are `7d`, `30d`, or `90d`; omitted title/period default to `Traffic`/`30d`. Publishing the block opts into public aggregate totals and series. Detailed breakdowns stay organization-authorized.

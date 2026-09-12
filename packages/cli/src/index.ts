@@ -8,6 +8,7 @@ export * from "./commands/list.js";
 export * from "./commands/get.js";
 export * from "./commands/rankings.js";
 export * from "./commands/stats.js";
+export * from "./commands/traffic.js";
 export * from "./commands/vote.js";
 export * from "./commands/keys.js";
 export * from "./commands/upload.js";

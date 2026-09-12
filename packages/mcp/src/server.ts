@@ -160,6 +160,14 @@ export class McpServer {
               };
         }
 
+        if (context && !context.oauth && context.workerAuth !== true && toolName === "get_product_traffic") {
+          return isNotification ? null : {
+            jsonrpc: "2.0",
+            id,
+            error: { code: -32001, message: "Unauthorized: Private product traffic requires a valid Worker authorization token." }
+          };
+        }
+
         try {
           if (context?.oauth) {
             if (toolArgs.api_key !== undefined || toolArgs.session_cookie !== undefined ||

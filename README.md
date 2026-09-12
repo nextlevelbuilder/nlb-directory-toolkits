@@ -13,9 +13,9 @@
 ```text
 nlb-directory-toolkits/
 ├── packages/
-│   ├── contracts/       # @nextlevelbuilder/contracts: Zod schemas, 16 block types, 5 templates, SHA-256 hasher, wire APIs
-│   ├── cli/             # @nextlevelbuilder/cli: `nlb` binary (validate, preview, submit, list, get, rankings, stats, doctor, vote, keys, upload, checkout)
-│   └── mcp/             # @nextlevelbuilder/mcp: Model Context Protocol server (stdio & Cloudflare Workers, 15 tools)
+│   ├── contracts/       # @nextlevelbuilder/contracts: Zod schemas, 17 block types, 5 templates, SHA-256 hasher, wire APIs
+│   ├── cli/             # @nextlevelbuilder/cli: `nlb` binary (validate, preview, submit, list, get, rankings, stats, traffic, doctor, vote, keys, upload, checkout)
+│   └── mcp/             # @nextlevelbuilder/mcp: Model Context Protocol server (stdio & Cloudflare Workers, 16 tools)
 ├── skills/
 │   └── nlb-submit/      # SKILL.md: Standard AgentSkill for Claude Code, Cursor, Codex, OpenCode, skills.sh
 └── docs/                # Detailed guides for CLI, MCP, Contracts, and Architecture
@@ -23,9 +23,9 @@ nlb-directory-toolkits/
 
 | Package | Description | Status |
 |---|---|---|
-| **`@nextlevelbuilder/contracts`** | Canonical server-synchronized schemas for 16 block types, 5 layout templates, deterministic canonical SHA-256 hasher, and API wire contracts. | [![npm](https://img.shields.io/badge/contracts-v0.2.0-blue)](packages/contracts) |
+| **`@nextlevelbuilder/contracts`** | Canonical server-synchronized schemas for 17 block types, 5 layout templates, deterministic canonical SHA-256 hasher, and API wire contracts. | [![npm](https://img.shields.io/badge/contracts-v0.2.0-blue)](packages/contracts) |
 | **`@nextlevelbuilder/cli`** | Developer & agent CLI binary `nlb` with validation, terminal preview, submissions with Polar payments, rankings, stats, doctor, voting, and uploads. | [![npm](https://img.shields.io/badge/cli-v0.2.0-green)](packages/cli) |
-| **`@nextlevelbuilder/mcp`** | Model Context Protocol server exposing 15 tools for local AI IDEs and Cloudflare Workers edge runtime. | [![npm](https://img.shields.io/badge/mcp-v0.2.0-purple)](packages/mcp) |
+| **`@nextlevelbuilder/mcp`** | Model Context Protocol server exposing 16 tools for local AI IDEs and Cloudflare Workers edge runtime. | [![npm](https://img.shields.io/badge/mcp-v0.2.0-purple)](packages/mcp) |
 | **`skills/nlb-submit`** | Cross-marketplace AgentSkill for autonomous repository scanning, block formatting, and directory submission. | [![skill](https://img.shields.io/badge/skill-nlb--submit-orange)](skills/nlb-submit/SKILL.md) |
 
 ---
@@ -52,6 +52,9 @@ npx @nextlevelbuilder/cli rankings weekly
 
 # Check live platform metrics and statistics:
 npx @nextlevelbuilder/cli stats
+
+# Query your product's NLB page traffic using the configured API key:
+npx @nextlevelbuilder/cli traffic my-awesome-tool --json
 
 # Export raw LLM-optimized Markdown for any product:
 npx @nextlevelbuilder/cli get my-awesome-tool --markdown
@@ -91,7 +94,7 @@ npx @nextlevelbuilder/cli doctor
 
 ---
 
-## 🧩 16 Supported Block Types
+## 🧩 17 Supported Block Types
 
 Every listing in Next Level Builders is composed of modular, strongly-typed blocks with `id` and `props`:
 
@@ -111,6 +114,7 @@ Every listing in Next Level Builders is composed of modular, strongly-typed bloc
 14. **`verification`**: Metric and platform provenance proofs.
 15. **`milestones`**: Key historical achievements with metrics.
 16. **`caseStudy`**: In-depth customer story with problem, solution, and quantifiable results.
+17. **`analytics`**: Real NLB product page traffic with configurable title and 7/30/90-day period. Publishing opts into public aggregate totals and daily series; detailed traffic remains organization-authorized. See [Analytics block and traffic contracts](docs/contracts.md).
 
 ---
 

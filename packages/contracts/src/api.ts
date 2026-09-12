@@ -260,3 +260,57 @@ export const CheckoutResponseSchema = z.object({
   url: z.string().url()
 }).passthrough();
 export type CheckoutResponse = z.infer<typeof CheckoutResponseSchema>;
+
+// GET /api/v1/products/[slug]/traffic - Organization-authorized product page traffic
+export const ProductTrafficQuerySchema = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional()
+}).superRefine((query, ctx) => {
+  const now = Date.now();
+  const to = query.to ? Date.parse(query.to) : now;
+  const from = query.from ? Date.parse(query.from) : to - 30 * 86400000;
+  if (to > now) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["to"],
+      message: "Traffic range must not end in the future"
+    });
+  }
+  if (from >= to || to - from > 90 * 86400000) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["from"],
+      message: "Traffic range must have from before to and span at most 90 days"
+    });
+  }
+});
+export type ProductTrafficQuery = z.infer<typeof ProductTrafficQuerySchema>;
+
+const TrafficCountSchema = z.number().int().nonnegative();
+const TrafficBreakdownSchema = z.array(z.object({
+  name: z.string(),
+  count: TrafficCountSchema
+}));
+
+export const ProductTrafficResponseSchema = z.object({
+  data: z.object({
+    source: z.literal("clickhouse"),
+    from: z.string().datetime(),
+    to: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    pageViews: TrafficCountSchema,
+    visitors: TrafficCountSchema,
+    outboundClicks: TrafficCountSchema,
+    activeVisitors: TrafficCountSchema,
+    series: z.array(z.object({
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      pageViews: TrafficCountSchema,
+      visitors: TrafficCountSchema,
+      outboundClicks: TrafficCountSchema
+    })),
+    referrers: TrafficBreakdownSchema,
+    countries: TrafficBreakdownSchema,
+    devices: TrafficBreakdownSchema
+  })
+});
+export type ProductTrafficResponse = z.infer<typeof ProductTrafficResponseSchema>;

@@ -89,6 +89,11 @@ function renderBlock(block: Block, index: number): string {
   lines.push(pc.gray(divider(70)));
 
   switch (block.type) {
+    case "analytics": {
+      lines.push(pc.gray(boxLine(`${sanitizeTerminalText(block.props.title)} (${block.props.period})`, 68)));
+      lines.push(pc.gray(boxLine("Live NLB product page traffic; publishing makes aggregates public.", 68)));
+      break;
+    }
     case "hero": {
       const p = block.props;
       lines.push(pc.gray(boxLine(`${pc.bold("Headline:")}    ${sanitizeTerminalText(p.headline)}`, 68)));

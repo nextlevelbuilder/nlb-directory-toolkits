@@ -4,6 +4,7 @@ import { webcrypto } from "node:crypto";
 import { exportJWK, generateKeyPair, jwtVerify, SignJWT } from "jose";
 import { handleWorkerFetch, type WorkerEnv } from "../src/transports/worker.js";
 import { authorizeOAuthMessage } from "../src/oauth.js";
+import { requiredToolScope } from "../src/tool-context.js";
 
 describe("MCP OAuth resource server", () => {
   let upstream: Server;
@@ -37,6 +38,12 @@ describe("MCP OAuth resource server", () => {
         });
         if (req.url === "/api/redirect") {
           res.writeHead(302, { Location: "/api/redirect-target" }).end();
+        } else if (req.url?.startsWith("/api/v1/products/test-product/traffic")) {
+          res.end(JSON.stringify({ data: {
+            source: "clickhouse", from: "2026-08-01T00:00:00Z", to: "2026-08-31T00:00:00Z",
+            updatedAt: "2026-08-31T00:00:00Z", pageViews: 12, visitors: 8, outboundClicks: 3, activeVisitors: 1,
+            series: [], referrers: [], countries: [], devices: []
+          } }));
         } else {
           res.end(JSON.stringify({ success: true, data: [] }));
         }
@@ -121,6 +128,40 @@ describe("MCP OAuth resource server", () => {
     expect((await call("submit_product", await token({ scope: "mcp:read" }))).status).toBe(403);
     expect((await call("submit_product", await token())).status).toBe(200);
     expect((await call("submit_product")).status).toBe(401);
+  });
+
+  it("requires mcp:read for private traffic and signs its request without forwarding credentials", async () => {
+    expect(requiredToolScope("get_product_traffic")).toBe("mcp:read");
+    upstreamRequests = [];
+    const anonymous = await call("get_product_traffic", undefined, { slug: "test-product" });
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers.get("WWW-Authenticate")).toContain("mcp:read");
+    expect((await call("get_product_traffic", await token({ scope: "mcp:write" }), { slug: "test-product" })).status).toBe(403);
+    expect(upstreamRequests).toHaveLength(0);
+
+    const bearer = await token({ scope: "mcp:read" });
+    const result = await call("get_product_traffic", bearer, {
+      slug: "test-product", from: "2026-08-01T00:00:00Z", to: "2026-08-31T00:00:00Z"
+    }, { ...env, NLB_API_KEY: "nlb_live_shared_key_must_not_be_used" });
+    expect(result.status).toBe(200);
+    const payload = await result.json();
+    expect(payload.result.isError).toBe(false);
+    expect(JSON.parse(payload.result.content[0].text).data.pageViews).toBe(12);
+    expect(upstreamRequests).toHaveLength(1);
+    const sent = upstreamRequests[0];
+    expect(sent.authorization).toBeUndefined();
+    expect(sent.cookie).toBeUndefined();
+    expect(sent.assertion).not.toBe(bearer);
+    const { payload: assertion } = await jwtVerify(sent.assertion!, new TextEncoder().encode(secret), {
+      algorithms: ["HS256"], issuer: resource, audience: `${env.NLB_API_URL}/api`, typ: "nlb-mcp-delegation+jwt"
+    });
+    expect(assertion).toMatchObject({ sub: "user-1", scope: "mcp:read", method: "GET", path: "/api/v1/products/test-product/traffic" });
+    expect((await call("get_product_traffic", undefined, { slug: "test-product" })).status).toBe(401);
+    for (const args of [{ api_key: "another-account" }, { api_url: "https://staging.nextlevelbuilder.io" }]) {
+      const denied = await call("get_product_traffic", bearer, { slug: "test-product", ...args });
+      expect((await denied.json()).result.isError).toBe(true);
+    }
+    expect(upstreamRequests).toHaveLength(1);
   });
 
   it("preserves JSON and multipart bodies through delegated POST requests", async () => {

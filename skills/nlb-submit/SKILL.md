@@ -1,6 +1,6 @@
 ---
 name: nlb-submit
-description: Scan, structure, validate, and submit your project to the Next Level Builders Directory (https://nextlevelbuilder.io) with 16 rich blocks, cryptographic content hashing, Polar payment handling, and automated moderation queueing.
+description: Scan, structure, validate, and submit your project to the Next Level Builders Directory (https://nextlevelbuilder.io) with 17 rich blocks, cryptographic content hashing, Polar payment handling, and automated moderation queueing.
 user-invocable: true
 when_to_use: "Use when the user wants to list, showcase, or submit their repository/product to Next Level Builders Directory."
 category: dev-tools
@@ -16,7 +16,7 @@ metadata:
 
 # NLB Submit (`nlb-submit`)
 
-Autonomous AgentSkill for scanning a codebase, structuring a rich `ProductDocument` with 16 block types, computing canonical SHA-256 hashes, and submitting the listing to the **Next Level Builders Directory** (`https://nextlevelbuilder.io` or `https://staging.nextlevelbuilder.io`).
+Autonomous AgentSkill for scanning a codebase, structuring a rich `ProductDocument` with 17 block types, computing canonical SHA-256 hashes, and submitting the listing to the **Next Level Builders Directory** (`https://nextlevelbuilder.io` or `https://staging.nextlevelbuilder.io`).
 
 ## Workflow
 
@@ -50,7 +50,7 @@ npx @nextlevelbuilder/cli template dev-tool --out product.json
 ```
 
 ### 3. Author `product.json`
-Fill out the document using the 16 supported block schemas from `@nextlevelbuilder/contracts` (every block requires `id` and `props`):
+Fill out the document using the 17 supported block schemas from `@nextlevelbuilder/contracts` (every block requires `id` and `props`):
 
 1. `hero` — Headline, subheadline, primary CTA button, badge.
 2. `carousel` — Multi-slide showcase with titles and image URLs.
@@ -68,6 +68,9 @@ Fill out the document using the 16 supported block schemas from `@nextlevelbuild
 14. `verification` — Cryptographic or domain provenance verification.
 15. `milestones` — Timeline of key achievements.
 16. `caseStudy` — Customer story with problem, solution, and outcome metrics.
+17. `analytics` — Real traffic for the NLB-hosted product page. Props: `title` (1–100 characters; default `Traffic`), `period` (`7d`, `30d`, `90d`; default `30d`). Publishing this block opts into public aggregate totals and daily series; add it only when the owner wants to publish those stats. Do not invent counts or set a product ID. Insert it in the document and use the normal revision submission flow.
+
+Owners can query detailed traffic with `nlb traffic <slug> --json` or MCP `get_product_traffic`. Both use existing API credentials. Optional `from`/`to` UTC ISO timestamps select an increasing range of at most 90 days ending no later than now; the default is the last 30 days. Visitor counts measure daily sessions: identifiers reset each UTC day, so a returning session on the next day counts again. Referrers, countries, and devices remain organization-authorized even when an Analytics block is published.
 
 ### 4. Validate & Compute Canonical Hash
 Validate schema and compute deterministic SHA-256 hash:

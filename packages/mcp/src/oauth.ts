@@ -74,7 +74,7 @@ function getKeySet(issuer: string) {
   return keys;
 }
 
-function delegatedFetch(config: OAuthConfig, subject: string, expiresAt: number, scope: McpScope): typeof fetch {
+function delegatedFetch(config: OAuthConfig, subject: string, expiresAt: number, scope: McpScope, privateRead: boolean): typeof fetch {
   return async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
@@ -88,7 +88,7 @@ function delegatedFetch(config: OAuthConfig, subject: string, expiresAt: number,
     headers.delete("Cookie");
     headers.delete("x-api-key");
     headers.delete("X-NLB-MCP-Assertion");
-    if (scope !== "mcp:read") {
+    if (scope !== "mcp:read" || privateRead) {
       const assertion = await new SignJWT({ scope, method: request.method, path: url.pathname })
         .setProtectedHeader({ alg: "HS256", typ: "nlb-mcp-delegation+jwt" })
         .setIssuer(config.resource).setAudience(`${config.apiUrl}/api`).setSubject(subject)
@@ -119,9 +119,10 @@ export async function authorizeOAuthMessage(
   const rpc = message as { method?: unknown; params?: { name?: unknown } } | null;
   const toolName = rpc?.method === "tools/call" && typeof rpc.params?.name === "string" ? rpc.params.name : "";
   const scope = requiredToolScope(toolName);
+  const privateRead = toolName === "get_product_traffic";
   const authorization = request.headers.get("Authorization");
   if (!authorization) {
-    return toolName && scope !== "mcp:read" ? challenge(config, 401, scope) : legacyContext;
+    return toolName && (scope !== "mcp:read" || privateRead) ? challenge(config, 401, scope) : legacyContext;
   }
   const token = /^Bearer ([^\s]+)$/i.exec(authorization)?.[1];
   if (!token) return challenge(config, 401, scope, true);
@@ -142,7 +143,7 @@ export async function authorizeOAuthMessage(
     return {
       env: { NLB_API_URL: config.apiUrl },
       oauth: { subject: payload.sub, scopes },
-      fetch: delegatedFetch(config, payload.sub, payload.exp, scope)
+      fetch: delegatedFetch(config, payload.sub, payload.exp, scope, privateRead)
     };
   } catch {
     return challenge(config, 401, scope, true);
