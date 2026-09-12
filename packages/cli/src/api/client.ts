@@ -21,6 +21,10 @@ import {
   RankingsResponseSchema,
   type StatsResponse,
   StatsResponseSchema,
+  ProductTrafficQuerySchema,
+  ProductTrafficResponseSchema,
+  type ProductTrafficQuery,
+  type ProductTrafficResponse,
   type HealthResponse,
   HealthResponseSchema,
   type VoteInput,
@@ -296,6 +300,18 @@ export class NlbApiClient {
       method: "GET",
       parseSchema: StatsResponseSchema
     });
+  }
+
+  async getProductTraffic(slug: string, query: ProductTrafficQuery = {}): Promise<ProductTrafficResponse> {
+    const validated = ProductTrafficQuerySchema.parse(query);
+    const params = new URLSearchParams();
+    if (validated.from) params.set("from", validated.from);
+    if (validated.to) params.set("to", validated.to);
+    const search = params.size ? `?${params.toString()}` : "";
+    return this.request<ProductTrafficResponse>(`/api/v1/products/${encodeURIComponent(slug)}/traffic${search}`, {
+      method: "GET",
+      parseSchema: ProductTrafficResponseSchema
+    }, true);
   }
 
   // 9. Service & Database Health probe

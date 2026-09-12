@@ -269,7 +269,16 @@ export const CaseStudyBlockSchema = BaseBlockSchema.extend({
   }),
 });
 
-// Discriminated Union of All 16 Block Types
+// Product page traffic, populated by the server for the current product.
+export const AnalyticsBlockSchema = BaseBlockSchema.extend({
+  type: z.literal("analytics"),
+  props: z.object({
+    title: z.string().min(1).max(100).default("Traffic"),
+    period: z.enum(["7d", "30d", "90d"]).default("30d"),
+  }),
+});
+
+// Discriminated Union of All Block Types
 export const BlockSchema = z.discriminatedUnion("type", [
   HeroBlockSchema,
   CarouselBlockSchema,
@@ -287,6 +296,7 @@ export const BlockSchema = z.discriminatedUnion("type", [
   VerificationBlockSchema,
   MilestonesBlockSchema,
   CaseStudyBlockSchema,
+  AnalyticsBlockSchema,
 ]);
 
 export type Block = z.infer<typeof BlockSchema>;
@@ -306,3 +316,4 @@ export type FounderBlock = z.infer<typeof FounderBlockSchema>;
 export type VerificationBlock = z.infer<typeof VerificationBlockSchema>;
 export type MilestonesBlock = z.infer<typeof MilestonesBlockSchema>;
 export type CaseStudyBlock = z.infer<typeof CaseStudyBlockSchema>;
+export type AnalyticsBlock = z.infer<typeof AnalyticsBlockSchema>;

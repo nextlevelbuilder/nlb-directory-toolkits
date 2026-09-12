@@ -2,7 +2,7 @@
 
 `@nextlevelbuilder/contracts` defines the core data structures, Zod schemas, layout templates, canonical SHA-256 hasher, and API wire contracts for the Next Level Builders ecosystem.
 
-## 16 Canonical Server Block Types
+## 17 Canonical Server Block Types
 
 Every block conforms to `BlockSchema = z.discriminatedUnion("type", [ ... ])`, requiring `id: string` and typed `props`:
 
@@ -24,6 +24,15 @@ Every block conforms to `BlockSchema = z.discriminatedUnion("type", [ ... ])`, r
 | `verification` | `metricType`, `verifiedValue`, `verificationScope`, `verifiedAt`, `evidenceStandard` | Cryptographic & platform verification |
 | `milestones` | `items: Array<{ date, title, description? }>` | Key project milestones (1-10 items) |
 | `caseStudy` | `customerName`, `problem`, `solution`, `outcome`, `metrics?` | In-depth customer case study |
+| `analytics` | `title` (1–100 characters, default `Traffic`), `period` (`7d`, `30d`, `90d`; default `30d`) | Live NLB product page traffic; publishing opts into public aggregate totals and daily series |
+
+To add traffic to an existing product, insert this block into its document's `blocks` array and use the existing CLI `submit` or MCP `submit_product` revision flow:
+
+```json
+{ "id": "traffic-1", "type": "analytics", "props": { "title": "Traffic", "period": "30d" } }
+```
+
+The server determines the product from the page being rendered. Do not supply a product ID or analytics counts in the block. It measures visits to the NLB-hosted product page, not the product's external website. Publishing the block makes its aggregate totals and daily series public; referrers, countries, and devices remain organization-authorized. Templates do not insert this block automatically.
 
 ---
 
@@ -41,7 +50,7 @@ Strictly validated on the server for all revisions:
   logoUrl?: string,        // Valid HTTP/HTTPS URL
   categorySlugs: string[], // 1-5 category identifiers
   tagSlugs: string[],      // 0-10 tag identifiers
-  blocks: Block[]          // Array of 16-block compliant objects
+  blocks: Block[]          // Array of supported block objects
 }
 ```
 
@@ -99,6 +108,7 @@ Exported from `@nextlevelbuilder/contracts`:
 - `ProductSubmitInputSchema`, `ProductSubmitSuccessSchema` & `ProductSubmitPaymentRequiredSchema` (HTTP 402)
 - `ProductListQuerySchema` & `ProductListResponseSchema` (with `limit` & `offset` pagination)
 - `ProductDetailResponseSchema`
+- `ProductTrafficQuerySchema` & `ProductTrafficResponseSchema` (`GET /api/v1/products/{slug}/traffic`)
 - `RankingsQuerySchema` & `RankingsResponseSchema` (`data.ranks`)
 - `StatsResponseSchema`
 - `HealthResponseSchema`
@@ -106,3 +116,25 @@ Exported from `@nextlevelbuilder/contracts`:
 - `ApiKeyItemSchema`, `ApiKeyListResponseSchema`, `ApiKeyCreateInputSchema`, `ApiKeyCreateResponseSchema`, `ApiKeyRevokeResponseSchema`
 - `MediaUploadResponseSchema`
 - `CheckoutInputSchema` & `CheckoutResponseSchema`
+
+### Product traffic
+
+The traffic endpoint requires an API key authorized for the product's organization. Optional `from` and `to` must be UTC ISO timestamps; `to` defaults to now and `from` to 30 days before `to`. The start must precede the end, the end cannot be in the future, and the range cannot exceed 90 days.
+
+```typescript
+{
+  data: {
+    source: "clickhouse",
+    from: string, to: string, updatedAt: string,
+    pageViews: number, visitors: number, outboundClicks: number, activeVisitors: number,
+    series: Array<{ date: string; pageViews: number; visitors: number; outboundClicks: number }>,
+    referrers: Array<{ name: string; count: number }>,
+    countries: Array<{ name: string; count: number }>,
+    devices: Array<{ name: string; count: number }>
+  }
+}
+```
+
+Series dates use `YYYY-MM-DD`. Missing or unavailable analytics are errors, not zero-filled responses.
+
+`visitors` counts daily visitor sessions. Session identifiers are salted by UTC date, so a returning session on the next UTC day counts again. A range total therefore is not a count of unique people across the whole period.

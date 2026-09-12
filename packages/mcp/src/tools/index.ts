@@ -5,7 +5,9 @@ import {
   getTemplate,
   ProductRevisionResponseSchema,
   ProductSubmitSuccessSchema,
-  ProductSubmitPaymentRequiredSchema
+  ProductSubmitPaymentRequiredSchema,
+  ProductTrafficQuerySchema,
+  ProductTrafficResponseSchema
 } from "@nextlevelbuilder/contracts";
 
 export interface McpToolDefinition {
@@ -99,10 +101,47 @@ export function resolveToolEnv(
 
 
 export const TOOLS: McpToolDefinition[] = [
+  {
+    name: "get_product_traffic",
+    description: "Query organization-authorized traffic for an NLB-hosted product page: totals, daily series, referrers, countries, devices, and active visitors. Visitor counts measure daily sessions; identifiers reset each UTC day, so a returning session on the next day counts again. Defaults to 30 days; maximum range is 90 days with no future timestamps. Requires the product organization's API key.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", minLength: 1, description: "Product slug" },
+        from: { type: "string", format: "date-time", description: "UTC ISO range start (default: 30 days before to)" },
+        to: { type: "string", format: "date-time", description: "UTC ISO range end (default: now)" },
+        api_key: { type: "string", description: "NLB API key; otherwise uses configured NLB_API_KEY" },
+        api_url: { type: "string", description: "Allowed directory API endpoint" }
+      },
+      required: ["slug"]
+    },
+    handler: async (args, context) => {
+      if (typeof args.slug !== "string" || !args.slug.trim()) throw new Error("Missing required 'slug' parameter.");
+      const query = ProductTrafficQuerySchema.parse({ from: args.from, to: args.to });
+      const { apiUrl, apiKey } = resolveToolEnv(args, context);
+      const params = new URLSearchParams();
+      if (query.from) params.set("from", query.from);
+      if (query.to) params.set("to", query.to);
+      const search = params.size ? `?${params.toString()}` : "";
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+        headers["x-api-key"] = apiKey;
+      }
+      const response = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(args.slug)}/traffic${search}`, {
+        method: "GET", headers, signal: AbortSignal.timeout(15000)
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Failed to load product traffic (HTTP ${response.status}): ${body || response.statusText}`);
+      }
+      return ProductTrafficResponseSchema.parse(await response.json());
+    }
+  },
   // 1. validate_listing
   {
     name: "validate_listing",
-    description: "Validate a product document against Next Level Builders Directory contracts and compute its canonical SHA-256 hash.",
+    description: "Validate a product document against Next Level Builders Directory contracts and compute its canonical SHA-256 hash. Supports an analytics block with title (default Traffic) and period (7d, 30d, or 90d; default 30d). Publishing it makes aggregate page traffic public.",
     inputSchema: {
       type: "object",
       properties: {

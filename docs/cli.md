@@ -176,7 +176,7 @@ nlb keys revoke <KEY_ID> --cookie "<SESSION_COOKIE>"
 ---
 
 ### 12. `nlb template [slug]`
-Lists available layout templates or generates a starter JSON file with 16-block compliant blueprints.
+Lists available layout templates or generates a starter JSON file with supported block blueprints.
 
 ```bash
 # List all templates:
@@ -207,3 +207,26 @@ nlb doctor
 nlb doctor -u https://staging.nextlevelbuilder.io
 nlb doctor --json
 ```
+
+### 15. `nlb traffic <slug>`
+
+Queries organization-authorized traffic for the NLB-hosted product page, including totals, daily series, referrers, countries, devices, and active visitors.
+
+```bash
+# Uses your existing NLB_API_KEY or saved CLI API key:
+nlb traffic my-product
+nlb traffic my-product --from 2026-08-01T00:00:00Z --to 2026-08-31T00:00:00Z --json
+```
+
+**Options**:
+- `-k, --api-key <key>`: Override the configured API key; it must be authorized for the product organization.
+- `-u, --url <url>`: Directory API base URL.
+- `--from <iso>`: UTC ISO start timestamp; defaults to 30 days before the end.
+- `--to <iso>`: UTC ISO end timestamp; defaults to now.
+- `--json`: Print the complete `{ data: ... }` traffic response.
+
+Ranges must be increasing, end no later than now, and span at most 90 days. Unavailable analytics set a nonzero exit status.
+
+Visitor counts measure daily sessions. Identifiers reset each UTC day, so a returning session on the next day counts again; period totals do not represent unique people across the full range. Human output labels this as `Daily visitor sessions`; JSON preserves the API's `visitors` field.
+
+To show aggregate traffic publicly, add the [Analytics block](contracts.md#17-canonical-server-block-types) to your product JSON and submit it through `nlb submit product.json --org <ORG_UUID>`. `nlb validate` and `nlb preview` accept the block and its defaults. Publishing this block opts into public aggregate traffic; detailed breakdowns remain private.

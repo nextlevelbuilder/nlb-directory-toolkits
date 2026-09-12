@@ -118,7 +118,7 @@ Generates a Polar checkout session URL for purchasing directory publishing slots
 - **Returns**: `{ url: string }`.
 
 ### 12. `list_templates`
-Returns layout templates (SaaS Launch, AI Agent, Dev Tool, Community Curated, Minimalist) with 16-block compliant blueprints.
+Returns layout templates (SaaS Launch, AI Agent, Dev Tool, Community Curated, Minimalist) with supported block blueprints.
 - **Parameters**: `template_name` (string, optional).
 - **Returns**: List of templates or single detailed template blueprint.
 
@@ -136,3 +136,25 @@ Creates a new developer API key. The raw secret key is returned only once.
 Revokes an existing developer API key by ID.
 - **Parameters**: `id` (string, required), `session_cookie` (string, optional), `api_url` (string, optional).
 - **Returns**: `{ success: boolean, message: string }`. Requires user session cookie.
+
+### 16. `get_product_traffic`
+
+Queries organization-authorized traffic for an NLB-hosted product page.
+- **Parameters**: `slug` (required), `from` and `to` (optional UTC ISO timestamps), `api_key` and `api_url` (optional).
+- **Defaults**: `to` is now; `from` is 30 days before `to`. Increasing ranges up to 90 days are accepted; the end cannot be in the future.
+- **Authentication**: Reuses `NLB_API_KEY` from the existing stdio environment or Worker configuration. The key must be authorized for the product organization. Worker calls also require `Authorization: Bearer <WORKER_AUTH_TOKEN>` to protect private reads using the configured key.
+- **Returns**: The [traffic response](contracts.md#product-traffic), including source, timestamps, totals, daily series, referrers, countries, devices, and active visitors. Unavailable data returns an MCP tool error.
+- **Visitors**: Counts represent daily sessions. Identifiers reset each UTC day, so a returning session on the next day counts again; range totals are not unique people across the period.
+
+```json
+{
+  "name": "get_product_traffic",
+  "arguments": {
+    "slug": "my-product",
+    "from": "2026-08-01T00:00:00Z",
+    "to": "2026-08-31T00:00:00Z"
+  }
+}
+```
+
+To add a public Analytics block, include `{ "id": "traffic-1", "type": "analytics", "props": { "title": "Traffic", "period": "30d" } }` in the product document's `blocks` array, validate with `validate_listing`, and submit with `submit_product`. Periods are `7d`, `30d`, or `90d`; omitted title/period default to `Traffic`/`30d`. Publishing the block opts into public aggregate totals and series. Detailed breakdowns stay organization-authorized.

@@ -10,6 +10,7 @@ import { configCommand } from "./commands/config.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { rankingsCommand } from "./commands/rankings.js";
 import { statsCommand } from "./commands/stats.js";
+import { trafficCommand, type TrafficOptions } from "./commands/traffic.js";
 import { voteCommand } from "./commands/vote.js";
 import { uploadCommand } from "./commands/upload.js";
 import { checkoutCommand } from "./commands/checkout.js";
@@ -77,6 +78,19 @@ export function createProgram(): Command {
     .option("--json", "Output full product object in JSON format")
     .action(async (slug: string, opts: { url?: string; markdown?: boolean; json?: boolean }) => {
       await getCommand(slug, opts);
+    });
+
+  program
+    .command("traffic")
+    .description("Query organization-authorized NLB product page traffic (default 30 days, maximum 90 days)")
+    .argument("<slug>", "Product slug identifier")
+    .option("-k, --api-key <key>", "NextLevelBuilder API key (or NLB_API_KEY)")
+    .option("-u, --url <url>", "Directory API base URL")
+    .option("--from <iso>", "Range start as UTC ISO timestamp")
+    .option("--to <iso>", "Range end as UTC ISO timestamp")
+    .option("--json", "Output full traffic response as JSON")
+    .action(async (slug: string, opts: TrafficOptions) => {
+      await trafficCommand(slug, opts);
     });
 
   program

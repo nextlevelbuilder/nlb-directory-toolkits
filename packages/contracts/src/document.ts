@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BlockSchema, type Block } from "./blocks.js";
+import { AnalyticsBlockSchema, BlockSchema, type Block } from "./blocks.js";
 import { SafeHttpUrlSchema } from "./blocks.js";
 import { canonicalizeJson, computeContentHashSync, computeContentHash } from "./hasher.js";
 
@@ -77,6 +77,8 @@ function normalizeBlock(rawBlock: Record<string, unknown>, index: number): Block
 
   // Otherwise map legacy flat blocks to props
   switch (type) {
+    case "analytics":
+      return AnalyticsBlockSchema.parse({ id, type, props: { title: rawBlock.title, period: rawBlock.period } });
     case "hero":
       return {
         id,

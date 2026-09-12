@@ -7,7 +7,7 @@ The `nlb-directory-toolkits` monorepo is engineered according to the **One Sourc
 ```text
                                   ┌─────────────────────────────┐
                                   │ @nextlevelbuilder/contracts │
-                                  │ (Zod schemas, 16 blocks,    │
+                                  │ (Zod schemas, 17 blocks,    │
                                   │  templates, hasher, API)    │
                                   └──────────────┬──────────────┘
                                                  │
