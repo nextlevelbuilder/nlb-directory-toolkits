@@ -21,7 +21,7 @@ export function createProgram(): Command {
   program
     .name("nlb")
     .description("Next Level Builders Directory CLI — validate, preview, submit, inspect, and interact with directory products")
-    .version("0.2.0");
+    .version("0.2.1");
 
   program
     .command("validate")
