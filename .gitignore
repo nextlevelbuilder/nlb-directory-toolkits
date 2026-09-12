@@ -24,6 +24,9 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 .nlbrc.json
+.dev.vars
+.dev.vars.*
+.wrangler/
 
 # IDE & OS
 .DS_Store

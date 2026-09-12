@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nlb-directory-mcp",
+  "account_id": "009dc0fcd0da3e503fbf38eb2b586e4b",
+  "main": "src/transports/worker.ts",
+  "compatibility_date": "2026-09-12",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "mcp.nextlevelbuilder.io", "custom_domain": true }
+  ],
+  "build": {
+    "command": "pnpm --filter @nextlevelbuilder/contracts build"
+  },
+  "vars": {
+    "NLB_API_URL": "https://nextlevelbuilder.io",
+    "NLB_OAUTH_ENABLED": "true",
+    "NLB_OAUTH_ISSUER": "https://nextlevelbuilder.io/api/auth",
+    "NLB_OAUTH_RESOURCE": "https://mcp.nextlevelbuilder.io/mcp"
+  },
+  "env": {
+    "staging": {
+      "name": "nlb-directory-mcp-staging",
+      "routes": [],
+      "vars": {
+        "NLB_API_URL": "https://staging.nextlevelbuilder.io",
+        "NLB_OAUTH_ENABLED": "true",
+        "NLB_OAUTH_ISSUER": "https://staging.nextlevelbuilder.io/api/auth",
+        "NLB_OAUTH_RESOURCE": "https://nlb-directory-mcp-staging.digitop-vn.workers.dev/mcp"
+      }
+    }
+  }
+}
