@@ -40,14 +40,14 @@ describe("MCP product traffic", () => {
   it("blocks anonymous Worker callers before using the configured server key", async () => {
     const fetchFn = vi.fn();
     vi.stubGlobal("fetch", fetchFn);
-    const result = await handleWorkerFetch(new Request("https://worker.example/mcp", { method: "POST", body: JSON.stringify(call) }), { NLB_API_KEY: "nlb_live_server" });
+    const result = await handleWorkerFetch(new Request("https://worker.example/mcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(call) }), { NLB_API_KEY: "nlb_live_server" });
     expect((await result.json() as { error: { code: number } }).error.code).toBe(-32001);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it("allows authenticated Worker callers with configured credentials", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json(response)));
-    const result = await handleWorkerFetch(new Request("https://worker.example/mcp", { method: "POST", headers: { Authorization: "Bearer worker-test" }, body: JSON.stringify(call) }), { WORKER_AUTH_TOKEN: "worker-test", NLB_API_KEY: "nlb_live_server" });
+    const result = await handleWorkerFetch(new Request("https://worker.example/mcp", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer worker-test" }, body: JSON.stringify(call) }), { WORKER_AUTH_TOKEN: "worker-test", NLB_API_KEY: "nlb_live_server" });
     const payload = await result.json() as { result: { isError: boolean; content: { text: string }[] } };
     expect(payload.result.isError).toBe(false);
     expect(JSON.parse(payload.result.content[0].text)).toEqual(response);

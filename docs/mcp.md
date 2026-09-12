@@ -63,6 +63,8 @@ The server negotiates protocol `2025-06-18` and retains `2024-11-05` for legacy 
 
 #### Deploy from this repository
 
+The [Deploy MCP workflow](../.github/workflows/deploy-mcp.yml) deploys production after the main-branch CI succeeds. It also supports manual dispatch on `main`, running the same build, test and type checks before deployment. Repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` authorize deployment. Existing Worker secrets, including OAuth delegation credentials, remain managed in Cloudflare.
+
 Requires Node.js 22+ and pnpm. Run from the repository root:
 
 ```bash

@@ -110,7 +110,7 @@ function resolveSessionCookie(args: Record<string, unknown>, context?: ToolConte
 export const TOOLS: McpToolDefinition[] = [
   {
     name: "get_product_traffic",
-    description: "Query organization-authorized traffic for an NLB-hosted product page: totals, daily series, referrers, countries, devices, and active visitors. Visitor counts measure daily sessions; identifiers reset each UTC day, so a returning session on the next day counts again. Defaults to 30 days; maximum range is 90 days with no future timestamps. Requires the product organization's API key.",
+    description: "Query organization-authorized traffic for an NLB-hosted product page: totals, daily series, referrers, countries, devices, and active visitors. Visitor counts measure daily sessions; identifiers reset each UTC day, so a returning session on the next day counts again. Defaults to 30 days; maximum range is 90 days with no future timestamps. Requires OAuth mcp:read with product organization access or an authorized API key.",
     inputSchema: {
       type: "object",
       properties: {
@@ -135,7 +135,7 @@ export const TOOLS: McpToolDefinition[] = [
         headers.Authorization = `Bearer ${apiKey}`;
         headers["x-api-key"] = apiKey;
       }
-      const response = await fetch(`${apiUrl}/api/v1/products/${encodeURIComponent(args.slug)}/traffic${search}`, {
+      const response = await (context?.fetch ?? fetch)(`${apiUrl}/api/v1/products/${encodeURIComponent(args.slug)}/traffic${search}`, {
         method: "GET", headers, signal: AbortSignal.timeout(15000)
       });
       if (!response.ok) {

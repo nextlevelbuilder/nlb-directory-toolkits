@@ -160,7 +160,7 @@ export class McpServer {
               };
         }
 
-        if (context && context.workerAuth !== true && toolName === "get_product_traffic") {
+        if (context && !context.oauth && context.workerAuth !== true && toolName === "get_product_traffic") {
           return isNotification ? null : {
             jsonrpc: "2.0",
             id,
