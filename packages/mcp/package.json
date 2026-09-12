@@ -40,5 +40,15 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nextlevelbuilder/nlb-directory-toolkits.git",
+    "directory": "packages/mcp"
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "bin"
+  ]
 }

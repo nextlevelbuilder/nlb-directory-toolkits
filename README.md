@@ -151,3 +151,39 @@ pnpm type-check
 
 ## 📄 License
 MIT © [Next Level Builders](https://nextlevelbuilder.io)
+
+## Publishing packages
+
+[Release workflow](.github/workflows/release.yml) publishes all three packages on a
+`v<version>` tag whose commit belongs to `main`. The tag must match every package
+version. Merge a reviewed version change first, then create the matching tag.
+Manual workflow runs build, test, type-check and upload `npm-packages` tarballs
+without publishing. Release builds use Node 24 and npm 11.19.0. pnpm packs the
+workspace dependencies into registry-compatible versions; npm publishes those
+archives using GitHub OIDC and automatically attaches provenance.
+
+Configure each package's npm Trusted Publisher with:
+
+- Provider: GitHub Actions
+- Repository: `nextlevelbuilder/nlb-directory-toolkits`
+- Workflow filename: `release.yml`
+- Environment: leave empty
+- Allowed action: direct `npm publish`
+
+No `NPM_TOKEN` or `NODE_AUTH_TOKEN` repository secret is required. npm requires a
+package to exist before trust can be configured. For the first release only, run
+the workflow manually, download and inspect its three tarballs, and publish them
+with an authenticated maintainer account (contracts first). Then register each
+package using npm 11.15.0 or later with account 2FA enabled:
+
+```bash
+npm trust github @nextlevelbuilder/contracts --repo nextlevelbuilder/nlb-directory-toolkits --file release.yml --allow-publish --yes
+npm trust github @nextlevelbuilder/cli --repo nextlevelbuilder/nlb-directory-toolkits --file release.yml --allow-publish --yes
+npm trust github @nextlevelbuilder/mcp --repo nextlevelbuilder/nlb-directory-toolkits --file release.yml --allow-publish --yes
+```
+
+Publish subsequent versions through tags and verify the workflow, registry
+versions and provenance before calling the release complete. If a release partly
+publishes, inspect the registry before retrying: npm versions are immutable.
+See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) and
+[npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/) for account setup.

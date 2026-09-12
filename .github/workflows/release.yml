@@ -4,29 +4,49 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
 
 jobs:
   release:
-    name: Publish Packages
+    name: Build and Publish Packages
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       id-token: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Release Ref
+        shell: bash
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            for package in contracts cli mcp; do
+              version=$(node -p "require('./packages/$package/package.json').version")
+              test "$GITHUB_REF_NAME" = "v$version"
+            done
+          fi
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
-      - name: Setup Node.js 22
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: "pnpm"
+          node-version: 24
           registry-url: "https://registry.npmjs.org"
+
+      - name: Install OIDC-capable npm
+        run: npm install --global npm@11.19.0
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
@@ -37,10 +57,28 @@ jobs:
       - name: Run Test Suites
         run: pnpm test
 
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Type Check
+        run: pnpm type-check
+
+      - name: Pack Release Artifacts
+        shell: bash
         run: |
-          pnpm --filter "@nextlevelbuilder/contracts" publish --access public --no-git-checks
-          pnpm --filter "@nextlevelbuilder/cli" publish --access public --no-git-checks
-          pnpm --filter "@nextlevelbuilder/mcp" publish --access public --no-git-checks
+          mkdir -p dist/release
+          for package in contracts cli mcp; do
+            pnpm --dir "packages/$package" pack --pack-destination "$GITHUB_WORKSPACE/dist/release"
+          done
+
+      - name: Upload Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: dist/release/*.tgz
+          if-no-files-found: error
+
+      - name: Publish to npm with OIDC
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          for package in contracts cli mcp; do
+            npm publish dist/release/nextlevelbuilder-$package-*.tgz --access public
+          done
