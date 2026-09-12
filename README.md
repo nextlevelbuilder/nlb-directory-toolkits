@@ -23,9 +23,9 @@ nlb-directory-toolkits/
 
 | Package | Description | Status |
 |---|---|---|
-| **`@nextlevelbuilder/contracts`** | Canonical server-synchronized schemas for 17 block types, 5 layout templates, deterministic canonical SHA-256 hasher, and API wire contracts. | [![npm](https://img.shields.io/badge/contracts-v0.2.0-blue)](packages/contracts) |
-| **`@nextlevelbuilder/cli`** | Developer & agent CLI binary `nlb` with validation, terminal preview, submissions with Polar payments, rankings, stats, doctor, voting, and uploads. | [![npm](https://img.shields.io/badge/cli-v0.2.0-green)](packages/cli) |
-| **`@nextlevelbuilder/mcp`** | Model Context Protocol server exposing 16 tools for local AI IDEs and Cloudflare Workers edge runtime. | [![npm](https://img.shields.io/badge/mcp-v0.2.0-purple)](packages/mcp) |
+| **`@nextlevelbuilder/contracts`** | Canonical server-synchronized schemas for 17 block types, 5 layout templates, deterministic canonical SHA-256 hasher, and API wire contracts. | [![npm](https://img.shields.io/badge/contracts-v0.2.1-blue)](packages/contracts) |
+| **`@nextlevelbuilder/cli`** | Developer & agent CLI binary `nlb` with validation, terminal preview, submissions with Polar payments, rankings, stats, doctor, voting, and uploads. | [![npm](https://img.shields.io/badge/cli-v0.2.1-green)](packages/cli) |
+| **`@nextlevelbuilder/mcp`** | Model Context Protocol server exposing 16 tools for local AI IDEs and Cloudflare Workers edge runtime. | [![npm](https://img.shields.io/badge/mcp-v0.2.1-purple)](packages/mcp) |
 | **`skills/nlb-submit`** | Cross-marketplace AgentSkill for autonomous repository scanning, block formatting, and directory submission. | [![skill](https://img.shields.io/badge/skill-nlb--submit-orange)](skills/nlb-submit/SKILL.md) |
 
 ---

@@ -2,7 +2,7 @@ import { TOOLS, McpToolDefinition } from "./tools/index.js";
 import { requiredToolScope, type ToolContext } from "./tool-context.js";
 
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2024-11-05"] as const;
-export const SERVER_VERSION = "0.2.0";
+export const SERVER_VERSION = "0.2.1";
 
 export interface JsonRpcRequest {
   jsonrpc: "2.0";

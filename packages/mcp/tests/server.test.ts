@@ -34,7 +34,7 @@ describe("MCP: Server JSON-RPC 2.0 Engine", () => {
     const res = await server.handleMessage({
       jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion }
     });
-    expect(res?.result).toMatchObject({ protocolVersion: "2025-06-18", serverInfo: { version: "0.2.0" } });
+    expect(res?.result).toMatchObject({ protocolVersion: "2025-06-18", serverInfo: { version: "0.2.1" } });
   });
 
   it("should return list of tools on 'tools/list'", async () => {
