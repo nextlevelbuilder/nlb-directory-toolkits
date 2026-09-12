@@ -70,8 +70,8 @@ Requires Node.js 22+ and pnpm. Run from the repository root:
 ```bash
 pnpm install --frozen-lockfile
 pnpm --filter @nextlevelbuilder/mcp exec wrangler login
-pnpm --filter @nextlevelbuilder/mcp deploy:check
-pnpm --filter @nextlevelbuilder/mcp deploy
+pnpm --filter @nextlevelbuilder/mcp run deploy:check
+pnpm --filter @nextlevelbuilder/mcp run deploy
 ```
 
 [`packages/mcp/wrangler.jsonc`](../packages/mcp/wrangler.jsonc) owns the Worker name, Cloudflare account, custom domain, entry point, and upstream API URL. The configured account owns the `nextlevelbuilder.io` zone. The `custom_domain` route lets Cloudflare manage DNS and HTTPS for `mcp.nextlevelbuilder.io`. The build command builds the shared contracts before bundling the Worker. To deploy elsewhere, update both `account_id` and `routes` for the destination zone. Wrangler also prints the deployed `workers.dev` URL; the MCP endpoint is `<worker-url>/mcp`.
@@ -141,7 +141,7 @@ Access tokens last five minutes. Manage and disconnect authorized clients at the
 4. Enable the web provider with `MCP_OAUTH_ENABLED=true`. Verify authorization-server metadata, JWKS, sign-in/consent, PKCE and refresh on staging before production.
 5. Deploy this Worker with `NLB_OAUTH_ENABLED=true` (already set in the checked-in configuration). Verify discovery, an OAuth-authorized call and a denied call on the custom domain. Keep staging and production resources/secrets isolated.
 
-The `staging` Wrangler environment uses `https://staging.nextlevelbuilder.io` and the separate MCP resource `https://nlb-directory-mcp-staging.digitop-vn.workers.dev/mcp`. Use `pnpm --filter @nextlevelbuilder/mcp deploy --env staging` to deploy it, and add `--env staging` to Wrangler secret commands when provisioning its independent secrets. Production commands omit `--env staging` and use the custom domain.
+The `staging` Wrangler environment uses `https://staging.nextlevelbuilder.io` and the separate MCP resource `https://nlb-directory-mcp-staging.digitop-vn.workers.dev/mcp`. Use `pnpm --filter @nextlevelbuilder/mcp run deploy --env staging` to deploy it, and add `--env staging` to Wrangler secret commands when provisioning its independent secrets. Production commands omit `--env staging` and use the custom domain.
 
 To disable new OAuth access, set `NLB_OAUTH_ENABLED=false` and deploy the MCP Worker. Legacy static-token callers continue working. Web/schema rollback follows the web repository's forward-only migration policy.
 
