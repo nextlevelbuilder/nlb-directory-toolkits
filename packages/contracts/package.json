@@ -26,5 +26,14 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nextlevelbuilder/nlb-directory-toolkits.git",
+    "directory": "packages/contracts"
+  },
+  "license": "MIT",
+  "files": [
+    "dist"
+  ]
 }
