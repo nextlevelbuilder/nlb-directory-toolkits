@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:http";
+import { webcrypto } from "node:crypto";
 import { exportJWK, generateKeyPair, jwtVerify, SignJWT } from "jose";
 import { handleWorkerFetch, type WorkerEnv } from "../src/transports/worker.js";
 import { authorizeOAuthMessage } from "../src/oauth.js";
@@ -14,6 +15,8 @@ describe("MCP OAuth resource server", () => {
   const secret = "local-test-delegation-secret-at-least-32-bytes";
 
   beforeAll(async () => {
+    // Workers expose Web Crypto globally; Node 18 test runners need the real Node implementation.
+    if (!globalThis.crypto) vi.stubGlobal("crypto", webcrypto);
     const keys = await generateKeyPair("RS256");
     privateKey = keys.privateKey;
     const jwk = { ...await exportJWK(keys.publicKey), kid: "test-key", alg: "RS256", use: "sig" };
@@ -50,8 +53,11 @@ describe("MCP OAuth resource server", () => {
   });
 
   afterAll(async () => {
-    upstream?.closeAllConnections();
-    await new Promise<void>((resolve, reject) => upstream.close((error) => error ? reject(error) : resolve()));
+    if (upstream) {
+      upstream.closeAllConnections();
+      await new Promise<void>((resolve, reject) => upstream.close((error) => error ? reject(error) : resolve()));
+    }
+    vi.unstubAllGlobals();
   });
 
   async function token(claims: Record<string, unknown> = {}, signingKey = privateKey) {
