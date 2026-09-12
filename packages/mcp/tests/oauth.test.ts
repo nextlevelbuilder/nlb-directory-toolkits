@@ -164,12 +164,19 @@ describe("MCP OAuth resource server", () => {
     expect(upstreamRequests).toHaveLength(0);
   });
 
-  it("does not follow authenticated redirects or sign requests for another API", async () => {
+  it("uses Workers-supported manual redirects and rejects redirects or another API", async () => {
     const context = await authorizeOAuthMessage(new Request(resource, { headers: { Authorization: `Bearer ${await token()}` } }),
       { method: "tools/call", params: { name: "submit_product" } }, env, { workerAuth: false });
     if (context instanceof Response || !context.fetch) throw new Error("Expected authenticated context");
     upstreamRequests = [];
-    await expect(context.fetch(`${env.NLB_API_URL}/api/redirect`)).rejects.toThrow();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    try {
+      await expect(context.fetch(`${env.NLB_API_URL}/api/redirect`)).rejects.toThrow("OAuth API redirects are not allowed");
+      // Node accepts redirect:error, but the deployed Workers runtime rejects that mode.
+      expect((fetchSpy.mock.calls[0][0] as Request).redirect).toBe("manual");
+    } finally {
+      fetchSpy.mockRestore();
+    }
     expect(upstreamRequests.map((r) => r.path)).toEqual(["/api/redirect"]);
     await expect(context.fetch("https://untrusted.example/api/private")).rejects.toThrow("configured NLB API");
   });

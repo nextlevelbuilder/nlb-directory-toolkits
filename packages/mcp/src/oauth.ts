@@ -96,8 +96,12 @@ function delegatedFetch(config: OAuthConfig, subject: string, expiresAt: number,
         .sign(config.secret);
       headers.set("X-NLB-MCP-Assertion", assertion);
     }
-    // Never forward credentials across an upstream redirect.
-    return fetch(new Request(request, { headers, redirect: "error" }));
+    // Workers supports only follow/manual. Reject redirects before any second request.
+    const response = await fetch(new Request(request, { headers, redirect: "manual" }));
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error("OAuth API redirects are not allowed");
+    }
+    return response;
   };
 }
 
