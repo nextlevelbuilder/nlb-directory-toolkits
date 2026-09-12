@@ -187,7 +187,7 @@ describe("MCP OAuth resource server", () => {
     const now = Math.floor(Date.now() / 1000);
     for (const claims of [
       { exp: now - 1 }, { aud: "https://other.example/mcp" }, { iss: "https://other.example/auth" },
-      { iat: now + 60, exp: now + 300 }, { exp: now + 301 }, { sub: "" }, { scope: undefined }
+      { iat: now + 60, exp: now + 300 }, { iat: now, exp: now + 301 }, { sub: "" }, { scope: undefined }
     ]) {
       expect((await call("list_templates", await token(claims))).status).toBe(401);
     }
