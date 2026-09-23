@@ -1,4 +1,5 @@
 {
+  "packageManager": "pnpm@10.34.5",
   "name": "nlb-directory-toolkits-root",
   "version": "0.2.1",
   "private": true,
