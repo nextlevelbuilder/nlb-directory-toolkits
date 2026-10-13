@@ -130,6 +130,28 @@ describe("MCP OAuth resource server", () => {
     expect((await call("submit_product")).status).toBe(401);
   });
 
+  it("keeps blog reads public anonymously, signs them when authenticated, and gates blog writes on mcp:write", async () => {
+    upstreamRequests = [];
+    expect((await call("blog_list_posts")).status).toBe(200);
+    expect(upstreamRequests[0]?.assertion).toBeUndefined();
+    expect((await call("blog_list_revisions", undefined, { post_id: "p1" })).status).toBe(401);
+    expect((await call("blog_publish_post", undefined, { post_id: "p1", version: 1 })).status).toBe(401);
+    expect((await call("blog_publish_post", await token({ scope: "mcp:read" }), { post_id: "p1", version: 1 })).status).toBe(403);
+
+    upstreamRequests = [];
+    expect((await call("blog_get_post", await token({ scope: "mcp:read" }), { id_or_slug: "draft-post" })).status).toBe(200);
+    expect(upstreamRequests).toHaveLength(1);
+    const verified = await jwtVerify(upstreamRequests[0].assertion!, new TextEncoder().encode(secret), {
+      algorithms: ["HS256"], issuer: resource, audience: `${env.NLB_API_URL}/api`, typ: "nlb-mcp-delegation+jwt"
+    });
+    expect(verified.payload).toMatchObject({ sub: "user-1", scope: "mcp:read", method: "GET", path: "/api/v1/blog/posts/draft-post" });
+
+    upstreamRequests = [];
+    expect((await call("blog_publish_post", await token(), { post_id: "p1", version: 1 })).status).toBe(200);
+    expect(upstreamRequests[0]?.path).toBe("/api/v1/blog/posts/p1/publish");
+    expect(upstreamRequests[0]?.assertion).toBeTruthy();
+  });
+
   it("requires mcp:read for private traffic and signs its request without forwarding credentials", async () => {
     expect(requiredToolScope("get_product_traffic")).toBe("mcp:read");
     upstreamRequests = [];
