@@ -16,4 +16,6 @@ export * from "./commands/checkout.js";
 export * from "./commands/template.js";
 export * from "./commands/config.js";
 export * from "./commands/doctor.js";
+export * from "./commands/blog.js";
+export * from "./api/blog-client.js";
 export * from "./cli.js";

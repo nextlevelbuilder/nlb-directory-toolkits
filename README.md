@@ -14,8 +14,8 @@
 nlb-directory-toolkits/
 ├── packages/
 │   ├── contracts/       # @nextlevelbuilder/contracts: Zod schemas, 17 block types, 5 templates, SHA-256 hasher, wire APIs
-│   ├── cli/             # @nextlevelbuilder/cli: `nlb` binary (validate, preview, submit, list, get, rankings, stats, traffic, doctor, vote, keys, upload, checkout)
-│   └── mcp/             # @nextlevelbuilder/mcp: Model Context Protocol server (stdio & Cloudflare Workers, 16 tools)
+│   ├── cli/             # @nextlevelbuilder/cli: `nlb` binary (validate, preview, submit, list, get, rankings, stats, traffic, doctor, vote, keys, upload, checkout, blog)
+│   └── mcp/             # @nextlevelbuilder/mcp: Model Context Protocol server (stdio & Cloudflare Workers, 27 tools)
 ├── skills/
 │   └── nlb-submit/      # SKILL.md: Standard AgentSkill for Claude Code, Cursor, Codex, OpenCode, skills.sh
 └── docs/                # Detailed guides for CLI, MCP, Contracts, and Architecture
@@ -25,7 +25,7 @@ nlb-directory-toolkits/
 |---|---|---|
 | **`@nextlevelbuilder/contracts`** | Canonical server-synchronized schemas for 17 block types, 5 layout templates, deterministic canonical SHA-256 hasher, and API wire contracts. | [![npm](https://img.shields.io/badge/contracts-v0.2.1-blue)](packages/contracts) |
 | **`@nextlevelbuilder/cli`** | Developer & agent CLI binary `nlb` with validation, terminal preview, submissions with Polar payments, rankings, stats, doctor, voting, and uploads. | [![npm](https://img.shields.io/badge/cli-v0.2.1-green)](packages/cli) |
-| **`@nextlevelbuilder/mcp`** | Model Context Protocol server exposing 16 tools for local AI IDEs and Cloudflare Workers edge runtime. | [![npm](https://img.shields.io/badge/mcp-v0.2.1-purple)](packages/mcp) |
+| **`@nextlevelbuilder/mcp`** | Model Context Protocol server exposing 27 tools (including blog management) for local AI IDEs and Cloudflare Workers edge runtime. | [![npm](https://img.shields.io/badge/mcp-v0.2.1-purple)](packages/mcp) |
 | **`skills/nlb-submit`** | Cross-marketplace AgentSkill for autonomous repository scanning, block formatting, and directory submission. | [![skill](https://img.shields.io/badge/skill-nlb--submit-orange)](skills/nlb-submit/SKILL.md) |
 
 ---
@@ -55,6 +55,10 @@ npx @nextlevelbuilder/cli stats
 
 # Query your product's NLB page traffic using the configured API key:
 npx @nextlevelbuilder/cli traffic my-awesome-tool --json
+
+# Manage blog posts (admin API key; see docs/cli.md):
+npx @nextlevelbuilder/cli blog blocks --json
+npx @nextlevelbuilder/cli blog publish <postId> --version 3
 
 # Export raw LLM-optimized Markdown for any product:
 npx @nextlevelbuilder/cli get my-awesome-tool --markdown

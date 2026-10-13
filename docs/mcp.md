@@ -80,7 +80,7 @@ For local development, run `pnpm --filter @nextlevelbuilder/mcp dev:worker` (def
 
 #### Authentication and browser access
 
-Public directory reads are available without authentication. Private traffic reads (`get_product_traffic`) require OAuth `mcp:read` or a valid static Worker token plus an upstream API key. Remote mutations (`submit_product`, `cast_vote`, `upload_media`, `create_checkout`, `create_api_key`, `revoke_api_key`) require an OAuth access token with the appropriate scope or `Authorization: Bearer <WORKER_AUTH_TOKEN>`. For legacy static-token clients, set a strong token as a Cloudflare secret to enable authorized writes:
+Public directory reads are available without authentication. Private traffic reads (`get_product_traffic`) require OAuth `mcp:read` or a valid static Worker token plus an upstream API key. Blog revisions (`blog_list_revisions`) follow the same rule. Remote mutations (`submit_product`, `cast_vote`, `upload_media`, `create_checkout`, `create_api_key`, `revoke_api_key`, and the blog write tools) require an OAuth access token with the appropriate scope or `Authorization: Bearer <WORKER_AUTH_TOKEN>`. For legacy static-token clients, set a strong token as a Cloudflare secret to enable authorized writes:
 
 ```bash
 pnpm --filter @nextlevelbuilder/mcp exec wrangler secret put WORKER_AUTH_TOKEN
@@ -115,8 +115,8 @@ When enabled, clients discover the web authorization server through `/.well-know
 
 | Scope | Permission |
 | --- | --- |
-| `mcp:read` | Read directory data, query authorized product traffic and validate documents |
-| `mcp:write` | Submit products, upload media, vote, create checkout links |
+| `mcp:read` | Read directory data, query authorized product traffic, read blog drafts and revisions (admins), and validate documents |
+| `mcp:write` | Submit products, upload media, vote, create checkout links, and create/update/publish/archive/restore blog posts (admins) |
 | `mcp:keys` | List, create and revoke the user's API keys; newly created keys can outlive this OAuth grant |
 
 Unauthenticated public reads remain available. Protected calls return HTTP `401` with OAuth discovery information, and an authenticated request missing the required scope returns `403`. Start sign-in using your client's OAuth login feature or when it encounters a protected call. An OAuth client needs only the endpoint configuration:
@@ -247,3 +247,24 @@ Queries organization-authorized traffic for an NLB-hosted product page.
 ```
 
 To add a public Analytics block, include `{ "id": "traffic-1", "type": "analytics", "props": { "title": "Traffic", "period": "30d" } }` in the product document's `blocks` array, validate with `validate_listing`, and submit with `submit_product`. Periods are `7d`, `30d`, or `90d`; omitted title/period default to `Traffic`/`30d`. Publishing the block opts into public aggregate totals and series. Detailed breakdowns stay organization-authorized.
+
+### 17. Blog management tools
+
+Wrap `/api/v1/blog/*` (see [blog contracts](contracts.md#blog-management)). Non-public operations require an admin account.
+
+| Tool | Arguments | Notes |
+|---|---|---|
+| `blog_list_blocks` | — | Block catalogue with props JSON Schemas and examples. Call it before composing posts. Public. |
+| `blog_validate` | `blocks` | Server-side validation; returns `{ valid, errors: [{ path, message }] }`. Public. |
+| `blog_list_posts` | `locale?`, `status?` (`draft`, `published`, `archived`, `all`), `tag?`, `limit?`, `offset?` | Anonymous callers see published posts only. |
+| `blog_get_post` | `id_or_slug`, `locale?` | Returns blocks and the current `version`. |
+| `blog_create_post` | `post` (`{ locale, slug, title, blocks, description?, coverUrl?, tags?, seo?, translationKey?, authorName? }`) | Creates a draft. Returns 409 if (locale, slug) already exists. |
+| `blog_update_post` | `post_id`, `version`, `changes` | Partial update. |
+| `blog_publish_post` / `blog_unpublish_post` / `blog_archive_post` | `post_id`, `version` | Archive is a soft delete. |
+| `blog_list_revisions` | `post_id` | Newest first. Always needs an identity. |
+| `blog_restore_revision` | `post_id`, `revision_id`, `version` | Restores the revision as a new version. |
+
+- Writes take an optional `idempotency_key`. Reuse it when you retry the same write. A random UUID is sent when it is omitted.
+- A stale `version` returns a tool error `{ error, status: 409, currentVersion }`. Re-read with `blog_get_post` and retry. A server validation failure returns `{ error, status: 400, details: [{ path, message }] }`.
+- OAuth: reads need `mcp:read` and writes need `mcp:write`. `blog_list_posts` and `blog_get_post` stay public when the caller is anonymous and forward the signed-in identity when one is present. Anonymous legacy Worker callers never use the Worker's configured `NLB_API_KEY` for blog reads.
+

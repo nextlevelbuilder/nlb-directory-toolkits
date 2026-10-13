@@ -14,14 +14,17 @@ import { trafficCommand, type TrafficOptions } from "./commands/traffic.js";
 import { voteCommand } from "./commands/vote.js";
 import { uploadCommand } from "./commands/upload.js";
 import { checkoutCommand } from "./commands/checkout.js";
+import { registerBlogCommands, type BlogCommandDeps } from "./commands/blog.js";
 
-export function createProgram(): Command {
+export function createProgram(deps: { blog?: BlogCommandDeps } = {}): Command {
   const program = new Command();
 
   program
     .name("nlb")
     .description("Next Level Builders Directory CLI — validate, preview, submit, inspect, and interact with directory products")
-    .version("0.2.1");
+    .version("0.2.1")
+    // Root options (-V/--version) are parsed only before the subcommand, so `nlb blog publish --version N` reaches the subcommand.
+    .enablePositionalOptions();
 
   program
     .command("validate")
@@ -190,6 +193,8 @@ export function createProgram(): Command {
     .action(async (opts: { url?: string; json?: boolean }) => {
       await doctorCommand(opts);
     });
+
+  registerBlogCommands(program, deps.blog);
 
   return program;
 }

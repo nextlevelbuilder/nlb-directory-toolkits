@@ -1,5 +1,5 @@
 import { TOOLS, McpToolDefinition } from "./tools/index.js";
-import { requiredToolScope, type ToolContext } from "./tool-context.js";
+import { BLOG_WRITE_TOOLS, ToolError, isPrivateReadTool, requiredToolScope, type ToolContext } from "./tool-context.js";
 
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2024-11-05"] as const;
 export const SERVER_VERSION = "0.2.1";
@@ -28,7 +28,8 @@ const MUTATING_TOOLS: Record<string, true> = {
   upload_media: true,
   create_checkout: true,
   create_api_key: true,
-  revoke_api_key: true
+  revoke_api_key: true,
+  ...Object.fromEntries(BLOG_WRITE_TOOLS.map((name) => [name, true as const]))
 };
 
 export class McpServer {
@@ -160,11 +161,16 @@ export class McpServer {
               };
         }
 
-        if (context && !context.oauth && context.workerAuth !== true && toolName === "get_product_traffic") {
+        if (context && !context.oauth && context.workerAuth !== true && isPrivateReadTool(toolName)) {
           return isNotification ? null : {
             jsonrpc: "2.0",
             id,
-            error: { code: -32001, message: "Unauthorized: Private product traffic requires a valid Worker authorization token." }
+            error: {
+              code: -32001,
+              message: toolName === "get_product_traffic"
+                ? "Unauthorized: Private product traffic requires a valid Worker authorization token."
+                : `Unauthorized: Tool '${toolName}' reads private data and requires a valid Worker authorization token.`
+            }
           };
         }
 
@@ -202,7 +208,7 @@ export class McpServer {
                   content: [
                     {
                       type: "text",
-                      text: JSON.stringify({ error: errorMessage }, null, 2)
+                      text: JSON.stringify(err instanceof ToolError ? { ...err.data, error: errorMessage } : { error: errorMessage }, null, 2)
                     }
                   ],
                   isError: true
