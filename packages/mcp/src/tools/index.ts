@@ -1,4 +1,5 @@
 import type { ToolContext } from "../tool-context.js";
+import { createBlogTools } from "./blog.js";
 import {
   toServerDocumentSafe,
   computeContentHashSync,
@@ -1054,5 +1055,8 @@ export const TOOLS: McpToolDefinition[] = [
 
       return resp.json();
     }
-  }
+  },
+
+  // Blog management (/api/v1/blog/*)
+  ...createBlogTools(resolveToolEnv)
 ];

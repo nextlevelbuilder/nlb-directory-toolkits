@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, jwtVerify, SignJWT } from "jose";
-import { MCP_SCOPES, requiredToolScope, type McpScope, type ToolContext } from "./tool-context.js";
+import { MCP_SCOPES, isIdentityAwareReadTool, isPrivateReadTool, requiredToolScope, type McpScope, type ToolContext } from "./tool-context.js";
 
 export interface OAuthEnv {
   NLB_OAUTH_ENABLED?: string;
@@ -119,7 +119,9 @@ export async function authorizeOAuthMessage(
   const rpc = message as { method?: unknown; params?: { name?: unknown } } | null;
   const toolName = rpc?.method === "tools/call" && typeof rpc.params?.name === "string" ? rpc.params.name : "";
   const scope = requiredToolScope(toolName);
-  const privateRead = toolName === "get_product_traffic";
+  const privateRead = isPrivateReadTool(toolName);
+  // Identity-aware reads stay public anonymously but sign a delegation when the caller is authenticated.
+  const forwardIdentity = privateRead || isIdentityAwareReadTool(toolName);
   const authorization = request.headers.get("Authorization");
   if (!authorization) {
     return toolName && (scope !== "mcp:read" || privateRead) ? challenge(config, 401, scope) : legacyContext;
@@ -143,7 +145,7 @@ export async function authorizeOAuthMessage(
     return {
       env: { NLB_API_URL: config.apiUrl },
       oauth: { subject: payload.sub, scopes },
-      fetch: delegatedFetch(config, payload.sub, payload.exp, scope, privateRead)
+      fetch: delegatedFetch(config, payload.sub, payload.exp, scope, forwardIdentity)
     };
   } catch {
     return challenge(config, 401, scope, true);
