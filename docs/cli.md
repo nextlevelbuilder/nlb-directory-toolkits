@@ -230,3 +230,26 @@ Ranges must be increasing, end no later than now, and span at most 90 days. Unav
 Visitor counts measure daily sessions. Identifiers reset each UTC day, so a returning session on the next day counts again; period totals do not represent unique people across the full range. Human output labels this as `Daily visitor sessions`; JSON preserves the API's `visitors` field.
 
 To show aggregate traffic publicly, add the [Analytics block](contracts.md#17-canonical-server-block-types) to your product JSON and submit it through `nlb submit product.json --org <ORG_UUID>`. `nlb validate` and `nlb preview` accept the block and its defaults. Publishing this block opts into public aggregate traffic; detailed breakdowns remain private.
+
+### 16. `nlb blog ...` (admin)
+
+Manages NLB blog posts through `/api/v1/blog/*`. Reads of published posts and the block catalogue are public; drafts, revisions and every write need an admin account's API key (`--api-key`, `NLB_API_KEY`, or `nlb config set api-key`).
+
+```bash
+nlb blog blocks --json                        # block catalogue: read before composing posts
+nlb blog validate post.json                   # server-side block validation ({ blocks } or a full post)
+nlb blog list --locale en --status all --tag news
+nlb blog get hello-world --locale en
+nlb blog create post.json                     # creates a draft (version 1)
+cat changes.json | nlb blog update <id> - --version 3
+nlb blog publish <id> --version 4             # also: unpublish, archive
+nlb blog revisions <id>
+nlb blog restore <id> <revisionId> --version 5
+```
+
+- `<file>` is a JSON file, or `-` to read stdin. Payloads are checked locally for the structural limits (slug format, lengths, at most 60 blocks, at most 200 KB of serialized blocks, at most 12 tags) before sending. Block props are validated by the server.
+- `update`, `publish`, `unpublish`, `archive` and `restore` require `--version N`, the post's current version. A stale version exits non-zero with the server's `currentVersion` (in `--json`: `{ success: false, status: 409, currentVersion }`). Re-read the post and retry.
+- Validation failures (HTTP 400) print each `path: message`; `--json` includes `details`.
+- Writes send a fresh `Idempotency-Key` header.
+- Common options: `-k, --api-key`, `-u, --url`, `--json` (prints the API `{ data }` response).
+

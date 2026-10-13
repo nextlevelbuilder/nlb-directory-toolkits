@@ -138,3 +138,10 @@ The traffic endpoint requires an API key or signed-in account authorized for the
 Series dates use `YYYY-MM-DD`. Missing or unavailable analytics are errors, not zero-filled responses.
 
 `visitors` counts daily visitor sessions. Session identifiers are salted by UTC date, so a returning session on the next UTC day counts again. A range total therefore is not a count of unique people across the whole period.
+
+## Blog management
+
+`blog.ts` exports the `/api/v1/blog/*` wire schemas and types: `BlogPostSchema`, `BlogPostSummarySchema`, `BlogBlockSchema`, `BlogSeoSchema`, `BlogRevisionSchema`, `BlogBlockDefinitionSchema`, the payloads `BlogPostCreateInputSchema`, `BlogPostUpdateInputSchema` (requires `version`), `BlogVersionInputSchema` and `BlogValidateInputSchema`, `BlogPostListQuerySchema`, the response envelopes, and `describeBlogApiFailure` (which normalizes 400 `details` and 409 `currentVersion` errors).
+
+`BLOG_LIMITS` and `BLOG_SLUG_REGEX` capture the structural limits: the slug is `^[a-z0-9]+(?:-[a-z0-9]+)*$` and at most 96 characters, the title at most 160, the description at most 320, a post has at most 60 blocks and at most 200 KB of serialized blocks, and at most 12 tags of at most 32 characters each. Block `props` are `Record<string, unknown>`. The server's `POST /api/v1/blog/validate` and `GET /api/v1/blog/blocks` catalogue are authoritative for per-block props.
+
