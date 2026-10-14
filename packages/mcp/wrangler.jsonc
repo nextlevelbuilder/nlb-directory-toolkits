@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "nlb-directory-mcp",
-  "account_id": "009dc0fcd0da3e503fbf38eb2b586e4b",
+  "account_id": "7ac87c90789159ae1b10b7d78f5dcc08",
   "main": "src/transports/worker.ts",
   "compatibility_date": "2026-09-12",
   "workers_dev": true,
