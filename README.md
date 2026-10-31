@@ -28,6 +28,8 @@ nlb-directory-toolkits/
 | **`@nextlevelbuilder/mcp`** | Model Context Protocol server exposing 16 tools for local AI IDEs and Cloudflare Workers edge runtime. | [![npm](https://img.shields.io/badge/mcp-v0.2.1-purple)](packages/mcp) |
 | **`skills/nlb-submit`** | Cross-marketplace AgentSkill for autonomous repository scanning, block formatting, and directory submission. | [![skill](https://img.shields.io/badge/skill-nlb--submit-orange)](skills/nlb-submit/SKILL.md) |
 
+> **Affiliate program:** affiliate MCP tools and the `nlb affiliates` CLI group are served by the single hosted endpoint `https://nextlevelbuilder.io/mcp` from the authoritative [nlb-web-v2 packages](https://github.com/nextlevelbuilder/nlb-web-v2/tree/main/packages). See [docs/mcp.md](docs/mcp.md#affiliate-program-tools-hosted-endpoint).
+
 ---
 
 ## ⚡ Quickstart

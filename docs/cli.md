@@ -230,3 +230,20 @@ Ranges must be increasing, end no later than now, and span at most 90 days. Unav
 Visitor counts measure daily sessions. Identifiers reset each UTC day, so a returning session on the next day counts again; period totals do not represent unique people across the full range. Human output labels this as `Daily visitor sessions`; JSON preserves the API's `visitors` field.
 
 To show aggregate traffic publicly, add the [Analytics block](contracts.md#17-canonical-server-block-types) to your product JSON and submit it through `nlb submit product.json --org <ORG_UUID>`. `nlb validate` and `nlb preview` accept the block and its defaults. Publishing this block opts into public aggregate traffic; detailed breakdowns remain private.
+
+---
+
+## Affiliate program (`nlb affiliates`)
+
+The `nlb affiliates` group ships in the authoritative CLI package of [nlb-web-v2](https://github.com/nextlevelbuilder/nlb-web-v2/tree/main/packages/cli); see [its CLI reference](https://github.com/nextlevelbuilder/nlb-web-v2/blob/main/docs/toolkits/cli.md). It is not part of the CLI built from this repository.
+
+```bash
+nlb affiliates program
+nlb affiliates join --terms-version 2026-10-31
+nlb affiliates preview --discount-bps 1000 --price-minor 4900
+nlb affiliates links create --code my-code --discount-bps 500 --destination /courses
+nlb affiliates links update <id> --status paused --expected-version 3
+nlb affiliates me | conversions | commissions | payouts | links list
+```
+
+Every command acts only on your own affiliate account (member API key, or a session cookie for NLB origins). Amounts ending in `Minor` are minor units and rates ending in `Bps` are basis points. There are no payout-method or operator money-moving commands; payout setup happens in a signed-in browser session on the website.

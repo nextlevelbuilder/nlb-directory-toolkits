@@ -138,3 +138,7 @@ The traffic endpoint requires an API key or signed-in account authorized for the
 Series dates use `YYYY-MM-DD`. Missing or unavailable analytics are errors, not zero-filled responses.
 
 `visitors` counts daily visitor sessions. Session identifiers are salted by UTC date, so a returning session on the next UTC day counts again. A range total therefore is not a count of unique people across the whole period.
+
+### Affiliate program
+
+The affiliate program schemas (`affiliate.ts`: member inputs, operator inputs, rules, response envelopes and `describeAffiliateApiFailure`) are exported by the authoritative contracts package in [nlb-web-v2](https://github.com/nextlevelbuilder/nlb-web-v2/tree/main/packages/contracts); see [its contracts reference](https://github.com/nextlevelbuilder/nlb-web-v2/blob/main/docs/toolkits/contracts.md#affiliate-program). Money fields end in `Minor` (integer minor units) and rates end in `Bps` (integer basis points, `10000` = 100%). Payout-method details are never part of the API-key or MCP surface.
