@@ -41,7 +41,7 @@ npx @nextlevelbuilder/mcp
 ---
 
 ### 2. Cloudflare Workers Transport (Edge Deployment)
-Hosted endpoint: **https://mcp.nextlevelbuilder.io/mcp**. Check service status at [health](https://mcp.nextlevelbuilder.io/health).
+Hosted endpoint: **https://mcp.nextlevelbuilder.io/mcp**. The web app (nlb-web-v2) serves that hostname. This Worker runs only on its `workers.dev` URL, `https://nlb-directory-mcp.digitop-vn.workers.dev/mcp`. Check its status at [health](https://nlb-directory-mcp.digitop-vn.workers.dev/health).
 
 The package exports a pure Web-standard fetch handler compatible with Cloudflare Workers without Node-only dependencies:
 
@@ -74,7 +74,7 @@ pnpm --filter @nextlevelbuilder/mcp run deploy:check
 pnpm --filter @nextlevelbuilder/mcp run deploy
 ```
 
-[`packages/mcp/wrangler.jsonc`](../packages/mcp/wrangler.jsonc) owns the Worker name, Cloudflare account, custom domain, entry point, and upstream API URL. The configured account owns the `nextlevelbuilder.io` zone. The `custom_domain` route lets Cloudflare manage DNS and HTTPS for `mcp.nextlevelbuilder.io`. The build command builds the shared contracts before bundling the Worker. To deploy elsewhere, update both `account_id` and `routes` for the destination zone. Wrangler also prints the deployed `workers.dev` URL; the MCP endpoint is `<worker-url>/mcp`.
+[`packages/mcp/wrangler.jsonc`](../packages/mcp/wrangler.jsonc) owns the Worker name, Cloudflare account, entry point, and upstream API URL. It declares no `routes`. The web app owns `mcp.nextlevelbuilder.io`, so this Worker must not claim that hostname as a custom domain. The build command builds the shared contracts before bundling the Worker. To deploy elsewhere, update `account_id`. Wrangler prints the deployed `workers.dev` URL; the MCP endpoint is `<worker-url>/mcp`.
 
 For local development, run `pnpm --filter @nextlevelbuilder/mcp dev:worker` (default port 8787).
 
@@ -140,9 +140,9 @@ Access tokens last five minutes. Manage and disconnect authorized clients at the
 2. Configure `MCP_OAUTH_RESOURCE` on the web and `NLB_OAUTH_RESOURCE` on this Worker to the same canonical MCP endpoint. The web's `BETTER_AUTH_URL` and Worker's `NLB_OAUTH_ISSUER` must identify the same issuer (`<web-origin>/api/auth`); `NLB_API_URL` must match that web origin.
 3. Provision the same independently generated, high-entropy `MCP_DELEGATION_SECRET` (at least 32 bytes) on both Workers. Keep it separate from `BETTER_AUTH_SECRET` and `WORKER_AUTH_TOKEN`, and out of source control.
 4. Enable the web provider with `MCP_OAUTH_ENABLED=true`. Verify authorization-server metadata, JWKS, sign-in/consent, PKCE and refresh on staging before production.
-5. Deploy this Worker with `NLB_OAUTH_ENABLED=true` (already set in the checked-in configuration). Verify discovery, an OAuth-authorized call and a denied call on the custom domain. Keep staging and production resources/secrets isolated.
+5. Deploy this Worker with `NLB_OAUTH_ENABLED=true` (already set in the checked-in configuration). Verify discovery, an OAuth-authorized call and a denied call on the `workers.dev` URL. Keep staging and production resources/secrets isolated.
 
-The `staging` Wrangler environment uses `https://staging.nextlevelbuilder.io` and the separate MCP resource `https://nlb-directory-mcp-staging.digitop-vn.workers.dev/mcp`. Use `pnpm --filter @nextlevelbuilder/mcp run deploy --env staging` to deploy it, and add `--env staging` to Wrangler secret commands when provisioning its independent secrets. Production commands omit `--env staging` and use the custom domain.
+The `staging` Wrangler environment uses `https://staging.nextlevelbuilder.io` and the separate MCP resource `https://nlb-directory-mcp-staging.digitop-vn.workers.dev/mcp`. Use `pnpm --filter @nextlevelbuilder/mcp run deploy --env staging` to deploy it, and add `--env staging` to Wrangler secret commands when provisioning its independent secrets. Production commands omit `--env staging` and deploy to the production `workers.dev` URL.
 
 To disable new OAuth access, set `NLB_OAUTH_ENABLED=false` and deploy the MCP Worker. Legacy static-token callers continue working. Web/schema rollback follows the web repository's forward-only migration policy.
 
