@@ -41,6 +41,7 @@ import {
   hasAffiliateLinkChange
 } from "@nextlevelbuilder/contracts";
 import { ToolError, type ToolContext } from "../tool-context.js";
+import { randomUuid } from "../uuid.js";
 import type { McpToolDefinition, resolveToolEnv } from "./index.js";
 
 type ResolveToolEnv = typeof resolveToolEnv;
@@ -148,7 +149,7 @@ async function affiliateRequest(
     if (cookie) headers.Cookie = cookie;
   }
   if (call.body !== undefined) headers["Content-Type"] = "application/json";
-  if (call.method !== "GET") headers["Idempotency-Key"] = call.idempotencyKey ?? crypto.randomUUID();
+  if (call.method !== "GET") headers["Idempotency-Key"] = call.idempotencyKey ?? randomUuid();
 
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(call.query ?? {})) {

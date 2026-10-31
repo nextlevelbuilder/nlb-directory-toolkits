@@ -1,4 +1,5 @@
 import { McpServer, SERVER_VERSION, SUPPORTED_PROTOCOL_VERSIONS } from "../server.js";
+import { randomUuid } from "../uuid.js";
 import { authorizeOAuthMessage, oauthMetadata, type OAuthEnv } from "../oauth.js";
 
 export interface WorkerEnv extends OAuthEnv {
@@ -14,25 +15,6 @@ const serverInstance = new McpServer();
 type SseListener = (event: string, data: unknown) => void;
 const sseSessions = new Map<string, SseListener>();
 
-function generateSessionId(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  const bytes = new Uint8Array(16);
-  if (typeof globalThis.crypto?.getRandomValues === "function") {
-    globalThis.crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < 16; i++) {
-      bytes[i] = (Math.random() * 256) | 0;
-    }
-  }
-  bytes[6] = (bytes[6] & 0x0f) | 0x40; // UUID v4
-  bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant 10
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
 
 /**
  * Cloudflare Workers standard fetch handler.
@@ -112,7 +94,7 @@ export async function handleWorkerFetch(request: Request, env?: WorkerEnv): Prom
 
   // SSE Transport initialization
   if (url.pathname === "/sse" && request.method === "GET") {
-    const sessionId = generateSessionId();
+    const sessionId = randomUuid();
     const messageEndpoint = `/message?sessionId=${sessionId}`;
 
     let streamListener: SseListener;
