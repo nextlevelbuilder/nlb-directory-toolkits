@@ -6,9 +6,6 @@
   "compatibility_date": "2026-09-12",
   "workers_dev": true,
   "preview_urls": false,
-  "routes": [
-    { "pattern": "mcp.nextlevelbuilder.io", "custom_domain": true }
-  ],
   "build": {
     "command": "pnpm --filter @nextlevelbuilder/contracts build"
   },
