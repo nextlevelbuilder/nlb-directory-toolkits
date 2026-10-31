@@ -247,3 +247,26 @@ Queries organization-authorized traffic for an NLB-hosted product page.
 ```
 
 To add a public Analytics block, include `{ "id": "traffic-1", "type": "analytics", "props": { "title": "Traffic", "period": "30d" } }` in the product document's `blocks` array, validate with `validate_listing`, and submit with `submit_product`. Periods are `7d`, `30d`, or `90d`; omitted title/period default to `Traffic`/`30d`. Publishing the block opts into public aggregate totals and series. Detailed breakdowns stay organization-authorized.
+
+---
+
+## Affiliate program tools (hosted endpoint)
+
+The affiliate program ([nlb-web-v2 #63](https://github.com/nextlevelbuilder/nlb-web-v2/issues/63)) is exposed on the single hosted NLB MCP endpoint, **https://nextlevelbuilder.io/mcp** (staging `https://staging.nextlevelbuilder.io/mcp`; the old host `https://mcp.nextlevelbuilder.io/mcp` keeps working). There is no separate affiliate server or endpoint. The tools, their scopes and their tests live in the authoritative packages of [nlb-web-v2](https://github.com/nextlevelbuilder/nlb-web-v2/tree/main/packages/mcp), which the web Worker mounts in-process; the full reference is [nlb-web-v2 docs/toolkits/mcp.md](https://github.com/nextlevelbuilder/nlb-web-v2/blob/main/docs/toolkits/mcp.md#22-affiliate-program-tools). The packages built from this repository do not include them, so use the hosted endpoint (or the nlb-web-v2 packages) to reach them.
+
+Tools are thin clients of `/api/v1/affiliates/*` and `/api/v1/affiliate-admin/*`; the web enforces ownership, the budget invariant `discount + (1 - discount) × commission ≤ budget`, the operator grant and the audit trail.
+
+- **Units**: fields ending in `Minor` are integer minor units (USD cents); fields ending in `Bps` are integer basis points (`10000` = 100%).
+- **Members** (owner-only): member tools act only on the caller's own affiliate account, through OAuth or a member API key. While the program is switched off the API answers 404 and the tool error carries `notEnabled: true`.
+- **Joining**: `affiliate_join` requires the `termsVersion` the user read and accepted (`affiliate_get_program` returns the current version). An agent must not accept the agreement on the user's behalf.
+- **Link edits** apply to future checkouts only. `expectedVersion` turns a concurrent change into `409 conflict`. Archiving is permanent.
+- **Operators**: `affiliate_admin_*` tools need OAuth `mcp:operator` plus the web's affiliate operator grant, or the operator's session cookie. API keys are refused.
+- **Never available through MCP or API keys**: setting or reading payout methods (bank, PayPal, identity data), revealing payee details, marking items paid, publishing rules, adjusting balances or approving batches.
+
+| Tools | Scope |
+| --- | --- |
+| `affiliate_get_program` (public) | `mcp:read` |
+| `affiliate_get_me`, `affiliate_preview_incentive`, `affiliate_list_links`, `affiliate_list_conversions`, `affiliate_get_commissions`, `affiliate_list_payouts` | `mcp:read` |
+| `affiliate_join`, `affiliate_create_link`, `affiliate_update_link` | `mcp:write` |
+| `affiliate_admin_get_rules`, `affiliate_admin_preview_rules`, `affiliate_admin_list_affiliates`, `affiliate_admin_list_conversions`, `affiliate_admin_preview_payouts`, `affiliate_admin_list_batches`, `affiliate_admin_get_batch`, `affiliate_admin_reconciliation`, `affiliate_admin_list_approvals` | `mcp:operator` (read-only) |
+| `affiliate_admin_hold_conversion`, `affiliate_admin_release_conversion`, `affiliate_admin_create_batch`, `affiliate_admin_cancel_batch` | `mcp:operator` |
