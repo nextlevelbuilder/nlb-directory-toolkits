@@ -261,7 +261,8 @@ Tools are thin clients of `/api/v1/affiliates/*` and `/api/v1/affiliate-admin/*`
 - **Joining**: `affiliate_join` requires the `termsVersion` the user read and accepted (`affiliate_get_program` returns the current version). An agent must not accept the agreement on the user's behalf.
 - **Link edits** apply to future checkouts only. `expectedVersion` turns a concurrent change into `409 conflict`. Archiving is permanent.
 - **Operators**: `affiliate_admin_*` tools need OAuth `mcp:operator` plus the web's affiliate operator grant, or the operator's session cookie. API keys are refused.
-- **Never available through MCP or API keys**: setting or reading payout methods (bank, PayPal, identity data), revealing payee details, marking items paid, publishing rules, adjusting balances or approving batches.
+- **Never available through MCP or API keys**: setting or reading payout methods (bank, PayPal, identity data), revealing payee details, marking items paid, publishing rules, adjusting balances, approving batches, suspending or reinstating affiliates, and requesting or deciding two-person approvals.
+- **Operator response shapes**: lists are wrapped (`{ affiliates }`, `{ conversions }`, `{ batches }`); creating or reading a batch returns it with `totals` and `items`; the approvals list is an array with `pagination`. The member incentive preview includes `example` only when `priceMinor` is given and the discount fits the budget.
 
 | Tools | Scope |
 | --- | --- |
