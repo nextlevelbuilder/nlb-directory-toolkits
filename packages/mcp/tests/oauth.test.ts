@@ -14,6 +14,13 @@ describe("MCP OAuth resource server", () => {
   let privateKey: CryptoKey;
   let upstreamRequests: Array<{ assertion?: string; authorization?: string; cookie?: string; path?: string; body: string; contentType?: string }> = [];
   const secret = "local-test-delegation-secret-at-least-32-bytes";
+  const affiliateProgram = {
+    rulesVersion: 0, currency: "usd",
+    levels: [{ key: "starter", minCustomers: 0, ordinaryBudgetBps: 1000, memberBudgetBps: 2000 }],
+    eligiblePlans: ["premium"], attributionWindowDays: 30, holdDays: 45, payoutThresholdMinor: 2500,
+    payoutFees: { paypalServiceFeeBps: 2000, bankVnServiceFeeBps: 0 }, termsVersion: "2026-10-31",
+    invariant: "discountBps*10000 + (10000-discountBps)*commissionBps <= budgetBps*10000"
+  };
 
   beforeAll(async () => {
     // Workers expose Web Crypto globally; Node 18 test runners need the real Node implementation.
@@ -44,6 +51,10 @@ describe("MCP OAuth resource server", () => {
             updatedAt: "2026-08-31T00:00:00Z", pageViews: 12, visitors: 8, outboundClicks: 3, activeVisitors: 1,
             series: [], referrers: [], countries: [], devices: []
           } }));
+        } else if (req.url === "/api/v1/affiliates/program") {
+          res.end(JSON.stringify({ data: affiliateProgram }));
+        } else if (req.url === "/api/v1/affiliate-admin/payouts/batches") {
+          res.end(JSON.stringify({ data: { batches: [] } }));
         } else {
           res.end(JSON.stringify({ success: true, data: [] }));
         }
@@ -161,6 +172,41 @@ describe("MCP OAuth resource server", () => {
       const denied = await call("get_product_traffic", bearer, { slug: "test-product", ...args });
       expect((await denied.json()).result.isError).toBe(true);
     }
+    expect(upstreamRequests).toHaveLength(1);
+  });
+
+  it("serves the public affiliate program anonymously and gates private affiliate tools by scope", async () => {
+    upstreamRequests = [];
+    const program = await call("affiliate_get_program");
+    expect(program.status).toBe(200);
+    expect((await program.json()).result.isError).toBe(false);
+    expect(upstreamRequests[0].assertion).toBeUndefined();
+
+    for (const [name, scope] of [["affiliate_get_me", "mcp:read"], ["affiliate_create_link", "mcp:write"], ["affiliate_admin_list_batches", "mcp:operator"]]) {
+      const anonymous = await call(name);
+      expect(anonymous.status).toBe(401);
+      expect(anonymous.headers.get("WWW-Authenticate")).toContain(scope);
+    }
+    expect((await call("affiliate_admin_list_batches", await token())).status).toBe(403);
+    expect(upstreamRequests).toHaveLength(1);
+  });
+
+  it("signs operator affiliate calls with mcp:operator and never forwards cookies or API keys", async () => {
+    upstreamRequests = [];
+    const bearer = await token({ scope: "mcp:read mcp:operator" });
+    const res = await call("affiliate_admin_list_batches", bearer, {}, { ...env, NLB_API_KEY: "nlb_live_shared_key_must_not_be_used" });
+    expect(res.status).toBe(200);
+    expect((await res.json()).result.isError).toBe(false);
+    expect(upstreamRequests).toHaveLength(1);
+    const sent = upstreamRequests[0];
+    expect(sent.authorization).toBeUndefined();
+    expect(sent.cookie).toBeUndefined();
+    const { payload } = await jwtVerify(sent.assertion!, new TextEncoder().encode(secret), {
+      algorithms: ["HS256"], issuer: resource, audience: `${env.NLB_API_URL}/api`, typ: "nlb-mcp-delegation+jwt"
+    });
+    expect(payload).toMatchObject({ sub: "user-1", scope: "mcp:operator", method: "GET", path: "/api/v1/affiliate-admin/payouts/batches" });
+    const smuggled = await call("affiliate_admin_list_batches", bearer, { session_cookie: "better-auth.session_token=x" });
+    expect((await smuggled.json()).result.isError).toBe(true);
     expect(upstreamRequests).toHaveLength(1);
   });
 

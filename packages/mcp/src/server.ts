@@ -1,5 +1,11 @@
 import { TOOLS, McpToolDefinition } from "./tools/index.js";
-import { requiredToolScope, type ToolContext } from "./tool-context.js";
+import {
+  ToolError,
+  isMutatingTool,
+  isPrivateReadTool,
+  requiredToolScope,
+  type ToolContext
+} from "./tool-context.js";
 
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2024-11-05"] as const;
 export const SERVER_VERSION = "0.2.1";
@@ -22,14 +28,23 @@ export interface JsonRpcResponse {
   };
 }
 
-const MUTATING_TOOLS: Record<string, true> = {
-  submit_product: true,
-  cast_vote: true,
-  upload_media: true,
-  create_checkout: true,
-  create_api_key: true,
-  revoke_api_key: true
-};
+/** Tools whose effect cannot be undone by another call (advertised as destructive). */
+const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set([
+  "revoke_api_key",
+  // Archiving a link (status archived) is permanent; a cancelled payout batch cannot be reopened.
+  "affiliate_update_link",
+  "affiliate_admin_cancel_batch"
+]);
+
+export interface ToolAnnotations {
+  readOnlyHint: boolean;
+  destructiveHint?: boolean;
+}
+
+/** MCP tool hints: reads and previews are read-only; mutations say whether they can be undone. */
+export function toolAnnotations(name: string): ToolAnnotations {
+  return isMutatingTool(name) ? { readOnlyHint: false, destructiveHint: DESTRUCTIVE_TOOLS.has(name) } : { readOnlyHint: true };
+}
 
 export class McpServer {
   private readonly tools: Map<string, McpToolDefinition> = new Map();
@@ -114,7 +129,8 @@ export class McpServer {
         const toolsList = Array.from(this.tools.values()).map((t) => ({
           name: t.name,
           description: t.description,
-          inputSchema: t.inputSchema
+          inputSchema: t.inputSchema,
+          annotations: toolAnnotations(t.name)
         }));
         return isNotification ? null : { jsonrpc: "2.0", id, result: { tools: toolsList } };
       }
@@ -147,7 +163,7 @@ export class McpServer {
         if (context?.oauth && !context.oauth.scopes.includes(requiredToolScope(toolName))) {
           return isNotification ? null : { jsonrpc: "2.0", id, error: { code: -32001, message: "Insufficient OAuth scope" } };
         }
-        if (context && !context.oauth && context.workerAuth !== true && MUTATING_TOOLS[toolName]) {
+        if (context && !context.oauth && context.workerAuth !== true && isMutatingTool(toolName)) {
           return isNotification
             ? null
             : {
@@ -160,11 +176,16 @@ export class McpServer {
               };
         }
 
-        if (context && !context.oauth && context.workerAuth !== true && toolName === "get_product_traffic") {
+        if (context && !context.oauth && context.workerAuth !== true && isPrivateReadTool(toolName)) {
           return isNotification ? null : {
             jsonrpc: "2.0",
             id,
-            error: { code: -32001, message: "Unauthorized: Private product traffic requires a valid Worker authorization token." }
+            error: {
+              code: -32001,
+              message: toolName === "get_product_traffic"
+                ? "Unauthorized: Private product traffic requires a valid Worker authorization token."
+                : `Unauthorized: Tool '${toolName}' reads private data and requires a valid Worker authorization token.`
+            }
           };
         }
 
@@ -193,6 +214,7 @@ export class McpServer {
               };
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err);
+          const payload = err instanceof ToolError ? { ...err.data, error: errorMessage } : { error: errorMessage };
           return isNotification
             ? null
             : {
@@ -202,7 +224,7 @@ export class McpServer {
                   content: [
                     {
                       type: "text",
-                      text: JSON.stringify({ error: errorMessage }, null, 2)
+                      text: JSON.stringify(payload, null, 2)
                     }
                   ],
                   isError: true

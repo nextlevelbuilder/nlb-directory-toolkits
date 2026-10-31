@@ -80,7 +80,7 @@ For local development, run `pnpm --filter @nextlevelbuilder/mcp dev:worker` (def
 
 #### Authentication and browser access
 
-Public directory reads are available without authentication. Private traffic reads (`get_product_traffic`) require OAuth `mcp:read` or a valid static Worker token plus an upstream API key. Remote mutations (`submit_product`, `cast_vote`, `upload_media`, `create_checkout`, `create_api_key`, `revoke_api_key`) require an OAuth access token with the appropriate scope or `Authorization: Bearer <WORKER_AUTH_TOKEN>`. For legacy static-token clients, set a strong token as a Cloudflare secret to enable authorized writes:
+Public directory reads (including `affiliate_get_program`) are available without authentication. Private reads (`get_product_traffic` and the affiliate member and operator reads) require OAuth (`mcp:read`, or `mcp:operator` for `affiliate_admin_*`) or a valid static Worker token plus upstream credentials. Remote mutations (`submit_product`, `cast_vote`, `upload_media`, `create_checkout`, `create_api_key`, `revoke_api_key`, `affiliate_join`, `affiliate_create_link`, `affiliate_update_link` and the affiliate operator writes) require an OAuth access token with the appropriate scope or `Authorization: Bearer <WORKER_AUTH_TOKEN>`. For legacy static-token clients, set a strong token as a Cloudflare secret to enable authorized writes:
 
 ```bash
 pnpm --filter @nextlevelbuilder/mcp exec wrangler secret put WORKER_AUTH_TOKEN
@@ -118,6 +118,7 @@ When enabled, clients discover the web authorization server through `/.well-know
 | `mcp:read` | Read directory data, query authorized product traffic and validate documents |
 | `mcp:write` | Submit products, upload media, vote, create checkout links |
 | `mcp:keys` | List, create and revoke the user's API keys; newly created keys can outlive this OAuth grant |
+| `mcp:operator` | Affiliate finance operator tools (`affiliate_admin_*`). The authorization server grants it only to platform operators, and the web re-checks the affiliate operator grant on every call |
 
 Unauthenticated public reads remain available. Protected calls return HTTP `401` with OAuth discovery information, and an authenticated request missing the required scope returns `403`. Start sign-in using your client's OAuth login feature or when it encounters a protected call. An OAuth client needs only the endpoint configuration:
 
@@ -247,3 +248,51 @@ Queries organization-authorized traffic for an NLB-hosted product page.
 ```
 
 To add a public Analytics block, include `{ "id": "traffic-1", "type": "analytics", "props": { "title": "Traffic", "period": "30d" } }` in the product document's `blocks` array, validate with `validate_listing`, and submit with `submit_product`. Periods are `7d`, `30d`, or `90d`; omitted title/period default to `Traffic`/`30d`. Publishing the block opts into public aggregate totals and series. Detailed breakdowns stay organization-authorized.
+
+### 17. Affiliate program tools (23 tools)
+
+The referral program of [web #63](https://github.com/nextlevelbuilder/nlb-web-v2/issues/63) on the same `https://mcp.nextlevelbuilder.io/mcp` endpoint (and stdio); there is no separate affiliate server. Tools are thin clients of `/api/v1/affiliates/*` and `/api/v1/affiliate-admin/*`, and the web decides every rule: ownership, the budget invariant `discount + (1 - discount) × commission ≤ budget`, the operator grant and the audit trail. Shapes are in [contracts.md](contracts.md#affiliate-program).
+
+- **Units**: fields ending in `Minor` are integer minor units (USD cents); fields ending in `Bps` are integer basis points (`10000` = 100%).
+- **Members** (owner-only): every member tool acts on the caller's own affiliate account through OAuth or a member API key (`api_key` / `NLB_API_KEY`). While `AFFILIATES_ENABLED` is off the API answers 404 and the error carries `notEnabled: true`.
+- **Joining**: `affiliate_join` requires `termsVersion`, the Affiliate Agreement version the user read and accepted (`affiliate_get_program` returns the current one). An agent must not accept the agreement on the user's behalf.
+- **Link edits** apply to future checkouts only. Pass `expectedVersion` (the link's `version`) to get `409 conflict` instead of overwriting a concurrent change. Archiving is permanent.
+- **Operators**: `affiliate_admin_*` tools need `mcp:operator` and the web's affiliate operator grant; without OAuth they take the operator's `session_cookie` (or `NLB_SESSION_COOKIE`). API keys are refused. Previews never write.
+- **Not available through MCP or API keys**: setting or reading payout methods (bank, PayPal, identity data), revealing payee details, marking items paid, publishing rules, ledger adjustments, suspending or reinstating affiliates, approving batches, and requesting or deciding two-person approvals (`POST …/approvals`, `POST …/approvals/{id}/decision`). Payout setup is a signed-in browser action on the website; the money-moving operator steps need a signed-in operator and, where sensitive, a second operator's approval.
+
+| Tool | Scope | Route |
+| --- | --- | --- |
+| `affiliate_get_program` | `mcp:read` (public) | `GET /api/v1/affiliates/program` |
+| `affiliate_get_me` · `affiliate_join` | `mcp:read` · `mcp:write` | `GET` · `POST /api/v1/affiliates/me` |
+| `affiliate_preview_incentive` | `mcp:read` | `GET /api/v1/affiliates/preview?discountBps&priceMinor` |
+| `affiliate_list_links` · `affiliate_create_link` | `mcp:read` · `mcp:write` | `GET` · `POST /api/v1/affiliates/links` |
+| `affiliate_update_link` | `mcp:write` | `PATCH /api/v1/affiliates/links/{id}` |
+| `affiliate_list_conversions` | `mcp:read` | `GET /api/v1/affiliates/conversions?limit` |
+| `affiliate_get_commissions` | `mcp:read` | `GET /api/v1/affiliates/commissions?limit` |
+| `affiliate_list_payouts` | `mcp:read` | `GET /api/v1/affiliates/payouts` |
+| `affiliate_admin_get_rules` | `mcp:operator` | `GET /api/v1/affiliate-admin/rules` |
+| `affiliate_admin_preview_rules` | `mcp:operator` | `POST …/rules/preview` (`{ rules }`, no write) |
+| `affiliate_admin_list_affiliates` | `mcp:operator` | `GET …/affiliates?status&limit` → `{ affiliates }` |
+| `affiliate_admin_list_conversions` | `mcp:operator` | `GET …/conversions?status&limit` → `{ conversions }` |
+| `affiliate_admin_hold_conversion` · `affiliate_admin_release_conversion` | `mcp:operator` | `POST …/conversions/{id}/hold` (`{ reason }`) · `…/release` |
+| `affiliate_admin_preview_payouts` | `mcp:operator` | `GET …/payouts/preview?period=YYYY-MM` |
+| `affiliate_admin_list_batches` · `affiliate_admin_create_batch` | `mcp:operator` | `GET …/payouts/batches` → `{ batches }` · `POST` (`{ period }`, locks funds, sends nothing) → batch with `totals` and `items` |
+| `affiliate_admin_get_batch` | `mcp:operator` | `GET …/payouts/batches/{id}` |
+| `affiliate_admin_cancel_batch` | `mcp:operator` | `POST …/payouts/batches/{id}/cancel` |
+| `affiliate_admin_reconciliation` | `mcp:operator` | `GET …/reconciliation?since&until` |
+| `affiliate_admin_list_approvals` | `mcp:operator` | `GET …/approvals?status&limit&cursor` (array plus `pagination`) |
+
+Annotations: reads and previews are `readOnlyHint: true`; `affiliate_update_link` (it can archive) and `affiliate_admin_cancel_batch` are `destructiveHint: true`. Writes accept an optional `idempotency_key`, sent as `Idempotency-Key`.
+
+Every tool returns the API's `{ data }` envelope unchanged after validating it against the shared contract. Failures come back as `isError: true` with a JSON payload `{ error, status, code, notEnabled, hint, details }`; the API's error codes include `not_enrolled`, `terms_not_accepted`, `over_budget`, `conflict`, `invalid_transition`, `approval_required` and `session_required`.
+
+Operator OAuth: clients ask for every advertised scope, but only platform operators receive `mcp:operator`. Others get `403 insufficient_scope` on `affiliate_admin_*`. An operator granted later must reconnect the client so it requests the scope again.
+
+#### Not yet available (tracked in [toolkits #20](https://github.com/nextlevelbuilder/nlb-directory-toolkits/issues/20))
+
+These parts of the issue need endpoints or decisions the web API does not provide today, so no tool fakes them:
+
+- `affiliate_get_stats` (aggregated clicks and conversions over a date range): no stats route exists. `affiliate_list_links` returns clicks and conversions per link.
+- `affiliate_get_payout_setup_url`: the web has no short-lived hosted setup URL; payout setup stays a signed-in browser action at `/account/referrals`.
+- Two-person approval requests and decisions, batch approval and manual payout recording (`mark-paid`): the routes exist but stay with signed-in humans on the website by design.
+- `nlb://affiliate/*` MCP resources: this server does not implement `resources/*` yet.

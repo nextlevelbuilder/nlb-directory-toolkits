@@ -1,4 +1,5 @@
 import type { ToolContext } from "../tool-context.js";
+import { createAffiliateTools } from "./affiliates.js";
 import {
   toServerDocumentSafe,
   computeContentHashSync,
@@ -1054,5 +1055,6 @@ export const TOOLS: McpToolDefinition[] = [
 
       return resp.json();
     }
-  }
+  },
+  ...createAffiliateTools(resolveToolEnv)
 ];

@@ -13,9 +13,9 @@
 ```text
 nlb-directory-toolkits/
 ├── packages/
-│   ├── contracts/       # @nextlevelbuilder/contracts: Zod schemas, 17 block types, 5 templates, SHA-256 hasher, wire APIs
-│   ├── cli/             # @nextlevelbuilder/cli: `nlb` binary (validate, preview, submit, list, get, rankings, stats, traffic, doctor, vote, keys, upload, checkout)
-│   └── mcp/             # @nextlevelbuilder/mcp: Model Context Protocol server (stdio & Cloudflare Workers, 16 tools)
+│   ├── contracts/       # @nextlevelbuilder/contracts: Zod schemas, 17 block types, 5 templates, SHA-256 hasher, wire APIs, affiliate contracts
+│   ├── cli/             # @nextlevelbuilder/cli: `nlb` binary (validate, preview, submit, list, get, rankings, stats, traffic, doctor, vote, keys, upload, checkout, affiliates)
+│   └── mcp/             # @nextlevelbuilder/mcp: Model Context Protocol server (stdio & Cloudflare Workers, 39 tools)
 ├── skills/
 │   └── nlb-submit/      # SKILL.md: Standard AgentSkill for Claude Code, Cursor, Codex, OpenCode, skills.sh
 └── docs/                # Detailed guides for CLI, MCP, Contracts, and Architecture
@@ -23,9 +23,9 @@ nlb-directory-toolkits/
 
 | Package | Description | Status |
 |---|---|---|
-| **`@nextlevelbuilder/contracts`** | Canonical server-synchronized schemas for 17 block types, 5 layout templates, deterministic canonical SHA-256 hasher, and API wire contracts. | [![npm](https://img.shields.io/badge/contracts-v0.2.1-blue)](packages/contracts) |
-| **`@nextlevelbuilder/cli`** | Developer & agent CLI binary `nlb` with validation, terminal preview, submissions with Polar payments, rankings, stats, doctor, voting, and uploads. | [![npm](https://img.shields.io/badge/cli-v0.2.1-green)](packages/cli) |
-| **`@nextlevelbuilder/mcp`** | Model Context Protocol server exposing 16 tools for local AI IDEs and Cloudflare Workers edge runtime. | [![npm](https://img.shields.io/badge/mcp-v0.2.1-purple)](packages/mcp) |
+| **`@nextlevelbuilder/contracts`** | Canonical server-synchronized schemas for 17 block types, 5 layout templates, deterministic canonical SHA-256 hasher, and API wire contracts (including the affiliate program). | [![npm](https://img.shields.io/badge/contracts-v0.2.1-blue)](packages/contracts) |
+| **`@nextlevelbuilder/cli`** | Developer & agent CLI binary `nlb` with validation, terminal preview, submissions with Polar payments, rankings, stats, doctor, voting, uploads, and the affiliate program. | [![npm](https://img.shields.io/badge/cli-v0.2.1-green)](packages/cli) |
+| **`@nextlevelbuilder/mcp`** | Model Context Protocol server exposing 39 tools (16 directory tools plus 23 affiliate program tools) for local AI IDEs and Cloudflare Workers edge runtime. | [![npm](https://img.shields.io/badge/mcp-v0.2.1-purple)](packages/mcp) |
 | **`skills/nlb-submit`** | Cross-marketplace AgentSkill for autonomous repository scanning, block formatting, and directory submission. | [![skill](https://img.shields.io/badge/skill-nlb--submit-orange)](skills/nlb-submit/SKILL.md) |
 
 ---
@@ -61,6 +61,11 @@ npx @nextlevelbuilder/cli get my-awesome-tool --markdown
 
 # Check database and endpoint connectivity:
 npx @nextlevelbuilder/cli doctor
+
+# Affiliate program: your level, budget, referral links and earnings:
+npx @nextlevelbuilder/cli affiliates program
+npx @nextlevelbuilder/cli affiliates me
+npx @nextlevelbuilder/cli affiliates links create --discount-bps 1000 --destination /courses
 ```
 
 ### 2. Setting up the MCP Server
@@ -91,6 +96,12 @@ npx @nextlevelbuilder/cli doctor
   }
 }
 ```
+
+### 3. Affiliate program (EN / VI)
+
+**EN** — Members can read the program, join after accepting the Affiliate Agreement, create and tune referral links within their incentive budget, and follow conversions, commissions and payouts through `nlb affiliates …` or the `affiliate_*` MCP tools. Finance operators with the `mcp:operator` scope get read-only previews, conversion holds and draft payout batches (`affiliate_admin_*`); no tool sends money, reads bank or identity data, or approves anything that needs a second operator. See [MCP Reference](docs/mcp.md#17-affiliate-program-tools-23-tools) and [CLI Reference](docs/cli.md#16-nlb-affiliates--alias-nlb-affiliate).
+
+**VI** — Thành viên có thể xem chương trình, tham gia sau khi đọc và chấp nhận Affiliate Agreement, tạo và chỉnh link giới thiệu trong ngân sách ưu đãi của mình, rồi theo dõi chuyển đổi, hoa hồng và chi trả qua `nlb affiliates …` hoặc các MCP tool `affiliate_*`. Operator tài chính có scope `mcp:operator` được xem trước, tạm giữ chuyển đổi và tạo đợt chi trả nháp (`affiliate_admin_*`). Không tool nào chuyển tiền, đọc dữ liệu ngân hàng hay giấy tờ tùy thân, hoặc phê duyệt thao tác cần người thứ hai.
 
 ---
 
