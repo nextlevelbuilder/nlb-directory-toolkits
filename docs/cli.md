@@ -230,3 +230,28 @@ Ranges must be increasing, end no later than now, and span at most 90 days. Unav
 Visitor counts measure daily sessions. Identifiers reset each UTC day, so a returning session on the next day counts again; period totals do not represent unique people across the full range. Human output labels this as `Daily visitor sessions`; JSON preserves the API's `visitors` field.
 
 To show aggregate traffic publicly, add the [Analytics block](contracts.md#17-canonical-server-block-types) to your product JSON and submit it through `nlb submit product.json --org <ORG_UUID>`. `nlb validate` and `nlb preview` accept the block and its defaults. Publishing this block opts into public aggregate traffic; detailed breakdowns remain private.
+
+### 16. `nlb affiliates ...` (alias `nlb affiliate`)
+
+The affiliate program through `/api/v1/affiliates/*`, acting only on your own account. Authenticate with a member API key (`--api-key`, `NLB_API_KEY` or `nlb config set api-key`), or a session cookie (`--cookie` or `NLB_SESSION_COOKIE`) when no key is set. The cookie is only sent to NextLevelBuilder origins, and `program` needs no credential.
+
+```bash
+nlb affiliates program                                 # levels, budgets, fees, current termsVersion
+nlb affiliates join --terms-version 2026-10-31         # only after reading and accepting the Affiliate Agreement
+nlb affiliates me                                      # level, budgetBps, balances, masked payout method (alias: status)
+nlb affiliates preview --discount-bps 1000 --price-minor 4900
+nlb affiliates links list
+nlb affiliates links create --code my-code --discount-bps 1000 --destination /courses --utm-campaign launch
+nlb affiliates links update <id> --discount-bps 500 --expected-version 2
+nlb affiliates links update <id> --status archived     # permanent
+nlb affiliates conversions --limit 20
+nlb affiliates commissions --limit 50
+nlb affiliates payouts
+```
+
+- Money fields ending in `Minor` are minor units (cents); rates ending in `Bps` are basis points (`100` = 1%).
+- A discount above your budget fails with `over_budget`; a stale `--expected-version` fails with `conflict`. `--label ''` and `--utm-campaign ''` clear those fields.
+- Inputs are checked locally against the shared contracts before any request; failures exit 1 and `--json` prints `{ success: false, status, code, hint, notEnabled }`.
+- There are no payout-method or operator commands: payout setup happens in a signed-in browser session, and finance operators use the website or the `affiliate_admin_*` MCP tools.
+- Common options: `-k, --api-key`, `-c, --cookie`, `-u, --url`, `--json`.
+- There is no `stats` command yet: the API has no aggregated stats route. `nlb affiliates links list` shows clicks and conversions per link.

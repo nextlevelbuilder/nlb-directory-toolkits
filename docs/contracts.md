@@ -138,3 +138,14 @@ The traffic endpoint requires an API key or signed-in account authorized for the
 Series dates use `YYYY-MM-DD`. Missing or unavailable analytics are errors, not zero-filled responses.
 
 `visitors` counts daily visitor sessions. Session identifiers are salted by UTC date, so a returning session on the next UTC day counts again. A range total therefore is not a count of unique people across the whole period.
+
+## Affiliate program
+
+`affiliate.ts` exports the `/api/v1/affiliates/*` and `/api/v1/affiliate-admin/*` wire schemas shared by the CLI and MCP. Money fields end in `Minor` (integer minor units); rates end in `Bps` (integer basis points, `AFFILIATE_BPS` = 10000).
+
+- Member inputs: `AffiliateJoinInputSchema` (`{ termsVersion }`), `AffiliateLinkCreateInputSchema`, `AffiliateLinkUpdateInputSchema` (at least one change; optional `expectedVersion`), `AffiliatePreviewQuerySchema`, `AffiliateListQuerySchema`. Field schemas: `AffiliateLinkCodeSchema`, `AffiliateDestinationPathSchema`, `AffiliateUtmCampaignSchema`, `AffiliateDiscountBpsSchema` (0 to `AFFILIATE_MAX_DISCOUNT_BPS`).
+- Operator inputs: `AffiliateRulesPreviewInputSchema` (`{ rules: AffiliateProgramRulesSchema }`), `AffiliateHoldInputSchema`, `AffiliateCreateBatchInputSchema`, `AffiliatePayoutPeriodSchema` (`YYYY-MM`) and the list queries `AffiliateAdmin*QuerySchema`.
+- Responses (`{ data }` envelopes): `AffiliateProgramResponseSchema`, `AffiliateSummaryResponseSchema`, `AffiliatePreviewResponseSchema`, `AffiliateLinkResponseSchema`, `AffiliateLinksResponseSchema` (`{ links }`), `AffiliateConversionsResponseSchema` (`{ conversions }`), `AffiliateCommissionsResponseSchema` (`{ balances, ledger }`), `AffiliatePayoutsResponseSchema` (`{ payouts }`); operator responses: `AffiliateAdminRulesResponseSchema` (`{ version, rules, program }`), `AffiliateRulesPreviewResponseSchema`, `AffiliateAdminAffiliatesResponseSchema` (`{ affiliates }`), `AffiliateAdminConversionsResponseSchema` (`{ conversions }`), `AffiliateAdminConversionResponseSchema` (hold/release), `AffiliateAdminBatchesResponseSchema` (`{ batches }`), `AffiliateAdminBatchResponseSchema` (cancel), `AffiliateAdminBatchDetailResponseSchema` (create/get, with `totals` and `items`) and `AffiliateAdminApprovalsResponseSchema` (array plus `pagination`). The open-ended payout preview and reconciliation reports use `AffiliateEnvelopeSchema`. `AffiliatePreviewSchema.example` is present only when `priceMinor` was given and the discount fits the budget.
+- `describeAffiliateApiFailure` maps errors to `{ status, code, notEnabled, hint, message }`. A member collection 404 `not_found` means `AFFILIATES_ENABLED` is off; `not_enrolled`, `terms_not_accepted`, `over_budget`, `conflict` and `session_required` carry a hint.
+
+No schema exists for payout-method input or payee details: those are session-only on the website and never pass through the CLI or MCP.

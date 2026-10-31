@@ -14,8 +14,9 @@ import { trafficCommand, type TrafficOptions } from "./commands/traffic.js";
 import { voteCommand } from "./commands/vote.js";
 import { uploadCommand } from "./commands/upload.js";
 import { checkoutCommand } from "./commands/checkout.js";
+import { registerAffiliateCommands, type AffiliateCommandDeps } from "./commands/affiliates.js";
 
-export function createProgram(): Command {
+export function createProgram(deps: { affiliates?: AffiliateCommandDeps } = {}): Command {
   const program = new Command();
 
   program
@@ -190,6 +191,8 @@ export function createProgram(): Command {
     .action(async (opts: { url?: string; json?: boolean }) => {
       await doctorCommand(opts);
     });
+
+  registerAffiliateCommands(program, deps.affiliates);
 
   return program;
 }
